@@ -1,4 +1,4 @@
-use std::{fmt::Display, mem, time::Instant};
+use std::{fmt::Display, mem, time::Instant, usize};
 
 struct ListNode<T> {
     value: T,
@@ -54,6 +54,16 @@ impl<T> LinkedList<T> {
         }
     }
 
+    pub fn length(&self) -> usize {
+        tail_recur((0, self), |(length, list)| {
+            if list.is_empty() {
+                TailRecurResult::Done((length, list))
+            } else {
+                TailRecurResult::Next((length + 1, list.rest()))
+            }
+        }).0
+    }
+
     pub fn reverse(&self) -> LinkedList<T>
     where
         T: Copy,
@@ -84,11 +94,11 @@ enum TailRecurResult<T> {
     Done(T),
 }
 
-fn tail_recur<T>(state: T, func: impl Fn(T) -> TailRecurResult<T>) -> T {
-    let mut new_state = state;
+fn tail_recur<T>(initial_parameters: T, func: impl Fn(T) -> TailRecurResult<T>) -> T {
+    let mut new_parameters = initial_parameters;
     loop {
-        match func(new_state) {
-            TailRecurResult::Next(result) => new_state = result,
+        match func(new_parameters) {
+            TailRecurResult::Next(result) => new_parameters = result,
             TailRecurResult::Done(result) => {
                 return result;
             }
@@ -150,11 +160,12 @@ fn main() {
     println!("{}", fibonacci(3));
     println!("{}", fibonacci(4));
     println!("{}", fibonacci(7));
+    println!("{}", fibonacci(7).length());
     println!("{}", sum(&fibonacci_tco(7)));
 
     let start = Instant::now();
-    let r = fibonacci_tco(1_000_000_0);
+    let r = fibonacci_tco(1_000_000_0).length();
     let end = Instant::now();
 
-    println!("{} in {:?}", r.first(), (end - start));
+    println!("{} in {:?}", r, (end - start));
 }
