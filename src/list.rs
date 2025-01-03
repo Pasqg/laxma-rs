@@ -66,19 +66,26 @@ impl<T> LinkedList<T> {
         .0
     }
 
+    //reverse' :: [a] -> [a]
+    //reverse' [] acc = acc
+    //reverse' x:xs acc = reverse' xs x:acc
+
+    //reverse :: [a] -> [a]
+    //reverse xs = reverse' xs []
     pub fn reverse(&self) -> LinkedList<T>
     where
         T: Copy,
     {
-        match self {
-            LinkedList::NotEmpty(_) => {
-                let x = self.rest();
-                let x = x.reverse();
-                x.append(self.first())
+        tail_recur((LinkedList::Empty, self), |(result, list)| {
+            if list.is_empty() {
+                return TailRecurResult::Done((result, list));
+            } else {
+                return TailRecurResult::Next((result.append(list.first()), list.rest()))
             }
-            LinkedList::Empty => LinkedList::Empty,
-        }
+        }).0
     }
+
+
 }
 
 //see https://rust-unofficial.github.io/too-many-lists/first-drop.html
