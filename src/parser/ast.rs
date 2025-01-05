@@ -3,8 +3,8 @@ use std::{collections::HashSet, hash::Hash};
 #[derive(Eq, PartialEq, Debug)]
 pub struct AST<RuleId, TokenType> {
     id: Option<RuleId>,
-    matched: Vec<TokenType>,
-    children: Vec<AST<RuleId, TokenType>>,
+    pub(super) matched: Vec<TokenType>,
+    pub(super) children: Vec<AST<RuleId, TokenType>>,
 }
 
 impl<RuleId, TokenType> AST<RuleId, TokenType>
