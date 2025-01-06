@@ -2,7 +2,7 @@ use std::{collections::HashSet, hash::Hash};
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct AST<RuleId, TokenType> {
-    id: Option<RuleId>,
+    pub(super) id: Option<RuleId>,
     pub(super) matched: Vec<TokenType>,
     pub(super) children: Vec<AST<RuleId, TokenType>>,
 }
@@ -27,12 +27,9 @@ where
         Self::new(None, Vec::new(), Vec::new())
     }
 
-    pub fn merge(mut self, other: Option<Self>) -> Self {
-        if other.is_some() {
-            let other = other.unwrap();
-            self.matched.extend(&other.matched);
-            self.children.push(other);
-        }
+    pub fn merge(mut self, other: Self) -> Self {
+        self.matched.extend(&other.matched);
+        self.children.push(other);
         self
     }
 
