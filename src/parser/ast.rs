@@ -1,20 +1,19 @@
 use std::{collections::HashSet, hash::Hash};
 
+use super::token_stream::Token;
+
 #[derive(Eq, PartialEq, Debug)]
-pub struct AST<RuleId, TokenType> {
+pub struct AST<RuleId> {
     pub(super) id: Option<RuleId>,
-    pub(super) matched: Vec<TokenType>,
-    pub(super) children: Vec<AST<RuleId, TokenType>>,
+    pub(super) matched: Vec<Token>,
+    pub(super) children: Vec<AST<RuleId>>,
 }
 
-impl<RuleId, TokenType> AST<RuleId, TokenType>
-where
-    TokenType: Copy,
-{
+impl<RuleId> AST<RuleId> {
     pub fn new(
         id: Option<RuleId>,
-        matched: Vec<TokenType>,
-        children: Vec<AST<RuleId, TokenType>>,
+        matched: Vec<Token>,
+        children: Vec<AST<RuleId>>,
     ) -> Self {
         Self {
             id,
@@ -27,8 +26,9 @@ where
         Self::new(None, Vec::new(), Vec::new())
     }
 
-    pub fn merge(mut self, other: Self) -> Self {
-        self.matched.extend(&other.matched);
+    pub fn merge(mut self, other: Self) -> Self  {
+        let other_matched = other.matched.clone();
+        self.matched.extend(other_matched);
         self.children.push(other);
         self
     }
@@ -57,7 +57,7 @@ where
     */
     pub fn prune(&self, excluded: &HashSet<RuleId>, use_child_rule: &HashSet<RuleId>) -> Self
     where
-        RuleId: Eq + Hash + Copy,
+        RuleId: Eq + Hash + Copy
     {
         let children = &self.children;
         if children.len() == 1 && self.id.is_some() && excluded.contains(&self.id.unwrap()) {
@@ -84,22 +84,4 @@ where
                 .collect(),
         )
     }
-    /*
-       def __repr__(self):
-           results = []
-
-           def visit_fn(node: Self, level: int):
-               results.append(f"{'  |' * level}  +- {node.id}: {' '.join(node.matched)}")
-
-           self.__visit__(visit_fn)
-           return "\n".join(results)
-
-       def __visit__(self, visit_fn: Callable[[Self, int], None], level: int = 0):
-           stack = deque([(self, level)])
-           while stack:
-               node, level = stack.pop()
-               visit_fn(node, level)
-               for child in reversed(node.children):
-                   stack.append((child, level + 1))
-    */
 }

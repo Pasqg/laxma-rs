@@ -6,29 +6,32 @@ use std::{
 
 use regex::Regex;
 
-use super::{ast::AST, parser_result::ParserResult, token_stream::TokenStream};
+use super::{
+    ast::AST,
+    parser_result::ParserResult,
+    token_stream::{Token, TokenStream},
+};
 
-pub trait ParserCombinator<RuleId, TokenType> {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType>;
+pub trait ParserCombinator<RuleId> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId>;
 }
 
 #[derive(Clone)]
-pub enum Combinators<RuleId, TokenType> {
-    MatchToken(MatchToken<RuleId, TokenType>),
+pub enum Combinators<RuleId> {
+    MatchToken(MatchToken<RuleId>),
     MatchRegex(MatchRegex<RuleId>),
     MatchNone(MatchNone),
-    MatchAny(MatchAny<RuleId, TokenType>),
-    AndMatch(AndMatch<RuleId, TokenType>),
-    OrMatch(OrMatch<RuleId, TokenType>),
-    AtLeastOne(AtLeastOne<RuleId, TokenType>),
+    MatchAny(MatchAny<RuleId>),
+    AndMatch(AndMatch<RuleId>),
+    OrMatch(OrMatch<RuleId>),
+    AtLeastOne(AtLeastOne<RuleId>),
 }
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for Combinators<RuleId, TokenType>
+impl<RuleId> ParserCombinator<RuleId> for Combinators<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + Eq + Any,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         match self {
             Combinators::MatchToken(parser) => parser.parse(tokens),
             Combinators::MatchNone(parser) => parser.parse(tokens),
@@ -41,28 +44,39 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct MatchToken<RuleId, TokenType> {
+#[derive(Clone)]
+pub struct MatchToken<RuleId> {
     id: Option<RuleId>,
-    token: TokenType,
+    token: Token,
 }
 
-impl<RuleId, TokenType> MatchToken<RuleId, TokenType> {
-    pub fn new(id: Option<RuleId>, token: TokenType) -> Self {
+impl<RuleId> MatchToken<RuleId> {
+    pub fn new(id: Option<RuleId>, token: Token) -> Self {
         Self { id, token }
+    }
+
+    pub fn match_str(id: Option<RuleId>, token: &str) -> Self {
+        Self {
+            id,
+            token: Token::str(token),
+        }
     }
 }
 
-pub fn lit<RuleId, TokenType>(token: TokenType) -> Combinators<RuleId, TokenType> {
+pub fn lit<RuleId>(token: Token) -> Combinators<RuleId> {
     Combinators::MatchToken(MatchToken::new(None, token))
 }
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for MatchToken<RuleId, TokenType>
+pub fn slit<RuleId>(token: &str) -> Combinators<RuleId> {
+    Combinators::MatchToken(MatchToken::new(None, Token::str(token)))
+}
+
+impl<RuleId> ParserCombinator<RuleId> for MatchToken<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + Eq,
+    Token: Clone + Eq,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         if tokens.not_done() {
             let (token, remaining) = tokens.advance();
             if token == self.token {
@@ -91,28 +105,28 @@ impl<RuleId> MatchRegex<RuleId> {
     }
 }
 
-pub fn regex<RuleId>(pattern: &str) -> Combinators<RuleId, &str> {
+pub fn regex<RuleId>(pattern: &str) -> Combinators<RuleId> {
     Combinators::MatchRegex(MatchRegex::new(None, pattern))
 }
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for MatchRegex<RuleId>
+impl<RuleId> ParserCombinator<RuleId> for MatchRegex<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + 'static,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
-        if TypeId::of::<TokenType>() != TypeId::of::<&str>() {
-            panic!("")
-        }
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         if tokens.not_done() {
             let (token, remaining) = tokens.advance();
-            let token_str: &str = unsafe { std::mem::transmute_copy(&token) };
-            let captures = self.regex.captures(token_str);
-            if captures.is_some() && captures.unwrap()[0] == *token_str {
-                return ParserResult::succeeded(
-                    AST::new(self.id, vec![token], Vec::new()),
-                    remaining,
-                );
+            match token {
+                Token::StringToken(token_str) => {
+                    let captures = self.regex.captures(&token_str);
+                    if captures.is_some() && captures.unwrap()[0] == token_str {
+                        return ParserResult::succeeded(
+                            AST::new(self.id, vec![Token::StringToken(token_str)], Vec::new()),
+                            remaining,
+                        );
+                    }
+                }
+                _ => panic!("Regex matcher doesn't support non string tokens"),
             }
         }
         return ParserResult::failed(tokens.clone());
@@ -122,17 +136,17 @@ where
 #[derive(Clone)]
 pub struct MatchNone;
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for MatchNone
+impl<RuleId> ParserCombinator<RuleId> for MatchNone
 where
     RuleId: Copy,
-    TokenType: Copy,
+    Token: Clone,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         ParserResult::succeeded(AST::empty(), tokens.clone())
     }
 }
 
-pub fn match_none<RuleId, TokenType>() -> Combinators<RuleId, TokenType> {
+pub fn match_none<RuleId>() -> Combinators<RuleId> {
     Combinators::MatchNone(MatchNone)
 }
 
@@ -140,13 +154,13 @@ pub fn match_none<RuleId, TokenType>() -> Combinators<RuleId, TokenType> {
     Matches anything, as long as the current and following tokens to not match the 'excluded' combinator (if provided).
 */
 #[derive(Clone)]
-pub struct MatchAny<RuleId, TokenType> {
+pub struct MatchAny<RuleId> {
     id: Option<RuleId>,
-    excluded: Option<Box<Combinators<RuleId, TokenType>>>,
+    excluded: Option<Box<Combinators<RuleId>>>,
 }
 
-impl<RuleId, TokenType> MatchAny<RuleId, TokenType> {
-    pub fn new(id: Option<RuleId>, excluded: Option<Combinators<RuleId, TokenType>>) -> Self {
+impl<RuleId> MatchAny<RuleId> {
+    pub fn new(id: Option<RuleId>, excluded: Option<Combinators<RuleId>>) -> Self {
         Self {
             id,
             excluded: excluded.map(|x| Box::new(x)),
@@ -154,12 +168,12 @@ impl<RuleId, TokenType> MatchAny<RuleId, TokenType> {
     }
 }
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for MatchAny<RuleId, TokenType>
+impl<'a, RuleId> ParserCombinator<RuleId> for MatchAny<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + Eq + 'static,
+    Token: Clone + Eq + 'static,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         if tokens.not_done() {
             if self.excluded.is_some() && self.excluded.as_ref().unwrap().parse(tokens).is_ok() {
                 return ParserResult::failed(tokens.clone());
@@ -176,23 +190,27 @@ where
     Returns a match if all the input rules match, otherwise it fails (and backtracks).
 */
 #[derive(Clone)]
-pub struct AndMatch<RuleId, TokenType> {
+pub struct AndMatch<RuleId> {
     id: Option<RuleId>,
-    rules: Vec<Combinators<RuleId, TokenType>>,
+    rules: Vec<Combinators<RuleId>>,
 }
 
-impl<RuleId, TokenType> AndMatch<RuleId, TokenType> {
-    pub fn new(id: Option<RuleId>, rules: Vec<Combinators<RuleId, TokenType>>) -> Self {
+impl<RuleId> AndMatch<RuleId> {
+    pub fn new(id: Option<RuleId>, rules: Vec<Combinators<RuleId>>) -> Self {
         Self { id, rules }
     }
 }
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for AndMatch<RuleId, TokenType>
+pub fn and_match<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combinators<RuleId> {
+    Combinators::AndMatch(AndMatch::new(Some(id), rules))
+}
+
+impl<RuleId> ParserCombinator<RuleId> for AndMatch<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + Eq + 'static,
+    Token: Clone + Eq + 'static,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         let mut _remaining = tokens.clone();
         let mut matched = Vec::new();
         let mut children = Vec::new();
@@ -206,7 +224,7 @@ where
                 return ParserResult::failed(tokens.clone());
             }
             _remaining = remaining.clone();
-            matched.extend(&ast.matched);
+            matched.extend(ast.matched.clone());
             children.push(ast);
         }
         return ParserResult::succeeded(AST::new(self.id, matched, children), _remaining);
@@ -217,23 +235,27 @@ where
     Returns a match if any of the input rules match, otherwise it fails (and backtracks).
 */
 #[derive(Clone)]
-pub struct OrMatch<RuleId, TokenType> {
+pub struct OrMatch<RuleId> {
     id: Option<RuleId>,
-    rules: Vec<Combinators<RuleId, TokenType>>,
+    rules: Vec<Combinators<RuleId>>,
 }
 
-impl<RuleId, TokenType> OrMatch<RuleId, TokenType> {
-    pub fn new(id: Option<RuleId>, rules: Vec<Combinators<RuleId, TokenType>>) -> Self {
+impl<RuleId> OrMatch<RuleId> {
+    pub fn new(id: Option<RuleId>, rules: Vec<Combinators<RuleId>>) -> Self {
         Self { id, rules }
     }
 }
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for OrMatch<RuleId, TokenType>
+pub fn or_match<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combinators<RuleId> {
+    Combinators::OrMatch(OrMatch::new(Some(id), rules))
+}
+
+impl<RuleId> ParserCombinator<RuleId> for OrMatch<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + Eq + 'static,
+    Token: Clone + Eq + 'static,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         for rule in &self.rules {
             let ParserResult {
                 result,
@@ -252,13 +274,10 @@ where
     }
 }
 
-pub fn optional<RuleId, TokenType>(
-    id: Option<RuleId>,
-    parser: Combinators<RuleId, TokenType>,
-) -> Combinators<RuleId, TokenType>
+pub fn optional<RuleId>(id: Option<RuleId>, parser: Combinators<RuleId>) -> Combinators<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + Eq + 'static,
+    Token: Clone + Eq + 'static,
 {
     Combinators::OrMatch(OrMatch::new(
         id,
@@ -270,14 +289,14 @@ where
 Matches zero or more occurrences of the provided 'element' rule.
 Optionally, matches a delimiter rule between each of the elements.
  */
-pub fn many<RuleId, TokenType>(
+pub fn many<RuleId>(
     id: Option<RuleId>,
-    element: Combinators<RuleId, TokenType>,
-    delim: Option<Combinators<RuleId, TokenType>>,
-) -> Combinators<RuleId, TokenType>
+    element: Combinators<RuleId>,
+    delim: Option<Combinators<RuleId>>,
+) -> Combinators<RuleId>
 where
     RuleId: Copy + Debug + 'static,
-    TokenType: Copy + Debug + Eq + 'static,
+    Token: Clone + Debug + Eq + 'static,
 {
     Combinators::OrMatch(OrMatch::new(
         id,
@@ -293,17 +312,17 @@ where
    Optionally, matches a delimiter rule between each of the elements.
 */
 #[derive(Clone)]
-pub struct AtLeastOne<RuleId, TokenType> {
+pub struct AtLeastOne<RuleId> {
     id: Option<RuleId>,
-    element: Box<Combinators<RuleId, TokenType>>,
-    delim: Option<Box<Combinators<RuleId, TokenType>>>,
+    element: Box<Combinators<RuleId>>,
+    delim: Option<Box<Combinators<RuleId>>>,
 }
 
-impl<RuleId, TokenType> AtLeastOne<RuleId, TokenType> {
+impl<RuleId> AtLeastOne<RuleId> {
     pub fn new(
         id: Option<RuleId>,
-        element: Combinators<RuleId, TokenType>,
-        delim: Option<Combinators<RuleId, TokenType>>,
+        element: Combinators<RuleId>,
+        delim: Option<Combinators<RuleId>>,
     ) -> Self {
         Self {
             id,
@@ -313,12 +332,20 @@ impl<RuleId, TokenType> AtLeastOne<RuleId, TokenType> {
     }
 }
 
-impl<RuleId, TokenType> ParserCombinator<RuleId, TokenType> for AtLeastOne<RuleId, TokenType>
+pub fn at_least_one<RuleId>(
+    id: Option<RuleId>,
+    element: Combinators<RuleId>,
+    delim: Option<Combinators<RuleId>>,
+) -> Combinators<RuleId> {
+    Combinators::AtLeastOne(AtLeastOne::new(id, element, delim))
+}
+
+impl<RuleId> ParserCombinator<RuleId> for AtLeastOne<RuleId>
 where
     RuleId: Copy,
-    TokenType: Copy + Eq + 'static,
+    Token: Clone + Eq + 'static,
 {
-    fn parse(&self, tokens: &TokenStream<TokenType>) -> ParserResult<RuleId, TokenType> {
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         let result = self.element.parse(tokens);
         if !result.is_ok() {
             return ParserResult::failed(tokens.clone());
@@ -374,36 +401,36 @@ mod test {
     use crate::parser::{
         ast::AST,
         combinators::{
-            lit, many, optional, regex, AndMatch, AtLeastOne, MatchAny, MatchNone, MatchRegex,
-            MatchToken, OrMatch, ParserCombinator,
+            many, optional, regex, slit, AndMatch, AtLeastOne, MatchAny, MatchNone,
+            MatchRegex, MatchToken, OrMatch, ParserCombinator,
         },
         parser_result::ParserResult,
-        token_stream::TokenStream,
+        token_stream::{Token, TokenStream},
     };
 
     #[test]
     fn test_match_token_success() {
-        let tokens = TokenStream::new(Rc::new(vec!["a", "b"]));
+        let tokens = TokenStream::from_str(vec!["a", "b"]);
 
         let rule = Some("test");
-        let parser = MatchToken::new(rule, "a");
+        let parser = MatchToken::match_str(rule, "a");
 
         let result = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec!["a"], Vec::new()),
-                TokenStream::with_offset(Rc::new(vec!["a", "b"]), 1)
+                AST::new(rule, vec![Token::str("a")], Vec::new()),
+                TokenStream::with_offset(Rc::new(vec![Token::str("a"), Token::str("b")]), 1)
             )
         );
     }
 
     #[test]
     fn test_match_token_failed() {
-        let tokens = TokenStream::new(Rc::new(vec!["c", "b"]));
+        let tokens = TokenStream::from_str(vec!["c", "b"]);
 
         let rule = Some("test");
-        let parser = MatchToken::new(rule, "a");
+        let parser = MatchToken::match_str(rule, "a");
 
         let result = parser.parse(&tokens);
         assert_eq!(result, ParserResult::failed(tokens));
@@ -411,7 +438,7 @@ mod test {
 
     #[test]
     fn test_regex_success() {
-        let tokens = TokenStream::new(Rc::new(vec!["variable", "b"]));
+        let tokens = TokenStream::from_str(vec!["variable", "b"]);
 
         let rule = Some("test");
         let parser = MatchRegex::new(rule, r"[a-z]+");
@@ -420,15 +447,15 @@ mod test {
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec!["variable"], Vec::new()),
-                TokenStream::with_offset(Rc::new(vec!["variable", "b"]), 1)
+                AST::new(rule, vec![Token::str("variable")], Vec::new()),
+                TokenStream::with_offset(Rc::new(vec![Token::str("variable"), Token::str("b")]), 1)
             )
         );
     }
 
     #[test]
     fn test_regex_failure_partial() {
-        let tokens = TokenStream::new(Rc::new(vec!["variableA", "b"]));
+        let tokens = TokenStream::from_str(vec!["variableA", "b"]);
 
         let rule = Some("test");
         let parser = MatchRegex::new(rule, r"[a-z]+");
@@ -439,7 +466,7 @@ mod test {
 
     #[test]
     fn test_regex_failure() {
-        let tokens = TokenStream::new(Rc::new(vec!["variableA", "b"]));
+        let tokens = TokenStream::from_str(vec!["variableA", "b"]);
 
         let rule = Some("test");
         let parser = MatchRegex::new(rule, r"[0-9]+");
@@ -450,136 +477,147 @@ mod test {
 
     #[test]
     fn test_match_none_empty_stream() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(Vec::new()));
+        let tokens: TokenStream = TokenStream::from_str(Vec::new());
 
-        let result: ParserResult<&str, &str> = MatchNone.parse(&tokens);
+        let result: ParserResult<&str> = MatchNone.parse(&tokens);
         assert_eq!(result, ParserResult::succeeded(AST::empty(), tokens));
     }
 
     #[test]
     fn test_match_none() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a"]);
 
-        let result: ParserResult<&str, &str> = MatchNone.parse(&tokens);
+        let result: ParserResult<&str> = MatchNone.parse(&tokens);
         assert_eq!(result, ParserResult::succeeded(AST::empty(), tokens));
     }
 
     #[test]
     fn test_match_any_success() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a"]);
 
         let rule = Some("test");
-        let parser = MatchAny::new(rule, Some(lit("b")));
+        let parser = MatchAny::new(rule, Some(slit("b")));
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec!["a"], Vec::new()),
-                TokenStream::with_offset(Rc::new(vec!["a"]), 1)
+                AST::new(rule, vec![Token::str("a")], Vec::new()),
+                TokenStream::with_offset(Rc::new(vec![Token::str("a")]), 1)
             )
         );
     }
 
     #[test]
     fn test_match_any_failure() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["b"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["b"]);
 
         let rule = Some("test");
-        let parser = MatchAny::new(rule, Some(lit("b")));
+        let parser = MatchAny::new(rule, Some(slit("b")));
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(result, ParserResult::failed(tokens));
     }
 
     #[test]
     fn test_and_match_success() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a", "b", "c"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "b", "c"]);
 
         let rule = Some("test");
-        let parser = AndMatch::new(rule, vec![lit("a"), lit("b")]);
+        let parser = AndMatch::new(rule, vec![slit("a"), slit("b")]);
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec!["a", "b"],
+                    vec![Token::str("a"), Token::str("b")],
                     vec![
-                        AST::new(None, vec!["a"], Vec::new()),
-                        AST::new(None, vec!["b"], Vec::new())
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str("b")], Vec::new())
                     ]
                 ),
-                TokenStream::with_offset(Rc::new(vec!["a", "b", "c"]), 2)
+                TokenStream::with_offset(
+                    Rc::new(vec![Token::str("a"), Token::str("b"), Token::str("c")]),
+                    2
+                )
             )
         );
     }
 
     #[test]
     fn test_and_match_failure() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a", "c"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "c"]);
 
         let rule = Some("test");
-        let parser = AndMatch::new(rule, vec![lit("a"), lit("b")]);
+        let parser = AndMatch::new(rule, vec![slit("a"), slit("b")]);
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(result, ParserResult::failed(tokens));
     }
 
     #[test]
     fn test_or_match_success() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a", "b"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "b"]);
 
         let rule = Some("test");
-        let parser = OrMatch::new(rule, vec![lit("a"), lit("b")]);
+        let parser = OrMatch::new(rule, vec![slit("a"), slit("b")]);
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec!["a"], vec![AST::new(None, vec!["a"], Vec::new())]),
-                TokenStream::with_offset(Rc::new(vec!["a", "b"]), 1)
+                AST::new(
+                    rule,
+                    vec![Token::str("a")],
+                    vec![AST::new(None, vec![Token::str("a")], Vec::new())]
+                ),
+                TokenStream::with_offset(Rc::new(vec![Token::str("a"), Token::str("b")]), 1)
             )
         );
     }
 
     #[test]
     fn test_or_match_failure() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["c"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["c"]);
 
         let rule = Some("test");
-        let parser = OrMatch::new(rule, vec![lit("a"), lit("b")]);
+        let parser = OrMatch::new(rule, vec![slit("a"), slit("b")]);
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(result, ParserResult::failed(tokens));
     }
 
     #[test]
     fn test_optional_some() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a"]);
 
         let rule = Some("test");
-        let parser = optional(rule, lit("a"));
+        let parser = optional(rule, slit("a"));
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec!["a"], vec![AST::new(None, vec!["a"], Vec::new())]),
-                TokenStream::with_offset(Rc::new(vec!["a"]), 1)
+                AST::new(
+                    rule,
+                    vec![Token::str("a")],
+                    vec![AST::new(None, vec![Token::str("a")], Vec::new())]
+                ),
+                TokenStream::with_offset(Rc::new(vec![Token::str("a")]), 1)
             )
         );
     }
 
     #[test]
     fn test_optional_none() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a"]);
 
         let rule = Some("test");
-        let parser = optional(rule, lit("b"));
+        let parser = optional(rule, slit("b"));
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(AST::new(rule, Vec::new(), vec![AST::empty()]), tokens)
@@ -588,64 +626,66 @@ mod test {
 
     #[test]
     fn test_at_least_once_no_delim_success() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a", "a", "a", "b"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", "b"]);
 
         let rule = Some("test");
-        let parser = AtLeastOne::new(rule, lit("a"), None);
+        let parser = AtLeastOne::new(rule, slit("a"), None);
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec!["a", "a", "a"],
+                    vec![Token::str("a"), Token::str("a"), Token::str("a")],
                     vec![
-                        AST::new(None, vec!["a"], Vec::new()),
-                        AST::new(None, vec!["a"], Vec::new()),
-                        AST::new(None, vec!["a"], Vec::new())
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new())
                     ]
                 ),
-                TokenStream::with_offset(Rc::new(vec!["a", "a", "a", "b"]), 3),
+                TokenStream::with_offset(
+                    Rc::new(vec![
+                        Token::str("a"),
+                        Token::str("a"),
+                        Token::str("a"),
+                        Token::str("b")
+                    ]),
+                    3
+                ),
             )
         );
     }
 
     #[test]
     fn test_at_least_once_failure() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a", "a", "a", "b"]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", "b"]);
 
         let rule = Some("test");
-        let parser = AtLeastOne::new(rule, lit("b"), None);
+        let parser = AtLeastOne::new(rule, slit("b"), None);
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
-        assert_eq!(
-            result,
-            ParserResult::failed(TokenStream::with_offset(
-                Rc::new(vec!["a", "a", "a", "b"]),
-                0
-            ),)
-        );
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(result, ParserResult::failed(tokens.clone()));
     }
 
     #[test]
     fn test_many_delim_success() {
-        let tokens: TokenStream<&str> = TokenStream::new(Rc::new(vec!["a", ",", "a", ","]));
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", ",", "a", ","]);
 
         let rule = Some("test");
-        let parser = many(rule, lit("a"), Some(lit(r",")));
+        let parser = many(rule, slit("a"), Some(slit(",")));
 
-        let result: ParserResult<&str, &str> = parser.parse(&tokens);
+        let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
             result,
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec!["a", ",", "a"],
+                    vec![Token::str("a"), Token::str(","), Token::str("a")],
                     vec![
-                        AST::new(None, vec!["a"], Vec::new()),
-                        AST::new(None, vec![","], Vec::new()),
-                        AST::new(None, vec!["a"], Vec::new())
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str(",")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new())
                     ]
                 ),
                 tokens
