@@ -24,7 +24,7 @@ pub enum Combinators<RuleId> {
     MatchAny(MatchAny<RuleId>),
     AndMatch(AndMatch<RuleId>),
     OrMatch(OrMatch<RuleId>),
-    AtLeastOne(AtLeastOne<RuleId>),
+    MatchMany(MatchMany<RuleId>),
 }
 
 impl<RuleId> ParserCombinator<RuleId> for Combinators<RuleId>
@@ -39,7 +39,7 @@ where
             Combinators::MatchRegex(parser) => parser.parse(tokens),
             Combinators::AndMatch(parser) => parser.parse(tokens),
             Combinators::OrMatch(parser) => parser.parse(tokens),
-            Combinators::AtLeastOne(parser) => parser.parse(tokens),
+            Combinators::MatchMany(parser) => parser.parse(tokens),
         }
     }
 }
@@ -286,75 +286,56 @@ where
 }
 
 /*
-Matches zero or more occurrences of the provided 'element' rule.
-Optionally, matches a delimiter rule between each of the elements.
- */
-pub fn many<RuleId>(
-    id: Option<RuleId>,
-    element: Combinators<RuleId>,
-    delim: Option<Combinators<RuleId>>,
-) -> Combinators<RuleId>
-where
-    RuleId: Copy + Debug + 'static,
-    Token: Clone + Debug + Eq + 'static,
-{
-    Combinators::OrMatch(OrMatch::new(
-        id,
-        vec![
-            Combinators::AtLeastOne(AtLeastOne::new(id, element, delim)),
-            Combinators::MatchNone(MatchNone),
-        ],
-    ))
-}
-
-/*
-   Matches at least one occurrence of the provided 'element' rule.
+   Matches at least N occurrences of the provided 'element' rule.
    Optionally, matches a delimiter rule between each of the elements.
 */
 #[derive(Clone)]
-pub struct AtLeastOne<RuleId> {
+pub struct MatchMany<RuleId> {
     id: Option<RuleId>,
     element: Box<Combinators<RuleId>>,
     delim: Option<Box<Combinators<RuleId>>>,
+    n: u32,
 }
 
-impl<RuleId> AtLeastOne<RuleId> {
+impl<RuleId> MatchMany<RuleId> {
     pub fn new(
         id: Option<RuleId>,
         element: Combinators<RuleId>,
         delim: Option<Combinators<RuleId>>,
+        n: u32,
     ) -> Self {
         Self {
             id,
             element: Box::new(element),
             delim: delim.map(|x| Box::new(x)),
+            n,
         }
     }
 }
 
-pub fn at_least_one<RuleId>(
-    id: Option<RuleId>,
-    element: Combinators<RuleId>,
-    delim: Option<Combinators<RuleId>>,
-) -> Combinators<RuleId> {
-    Combinators::AtLeastOne(AtLeastOne::new(id, element, delim))
-}
-
-impl<RuleId> ParserCombinator<RuleId> for AtLeastOne<RuleId>
+impl<RuleId> ParserCombinator<RuleId> for MatchMany<RuleId>
 where
     RuleId: Copy,
     Token: Clone + Eq + 'static,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
+        let mut matches_count = 0;
+
         let result = self.element.parse(tokens);
         if !result.is_ok() {
-            return ParserResult::failed(tokens.clone());
+            if matches_count < self.n {
+                return ParserResult::failed(tokens.clone());
+            } else {
+                return ParserResult::succeeded(AST::empty(), tokens.clone());
+            }
         }
 
+        matches_count += 1;
         let mut matched = result.ast.matched.clone();
         let mut children = vec![result.ast];
         let mut remaining = result.remaining;
-        while remaining.not_done() {
+        let mut mismatch: bool = false;
+        while remaining.not_done() && !mismatch {
             let (delim_result, delim_ast, delim_remaining) = if self.delim.is_some() {
                 let result = self.delim.as_ref().unwrap().parse(&remaining);
                 (result.result, result.ast, result.remaining)
@@ -363,25 +344,46 @@ where
             };
 
             if !delim_result {
-                return ParserResult::succeeded(AST::new(self.id, matched, children), remaining);
-            }
-
-            let element_result = self.element.parse(&delim_remaining);
-            if element_result.result {
-                if self.delim.is_some() {
-                    matched.extend(delim_ast.matched.clone());
-                    children.push(delim_ast);
-                }
-                matched.extend(element_result.ast.matched.clone());
-                children.push(element_result.ast);
-                remaining = element_result.remaining;
+                mismatch = true;
             } else {
-                return ParserResult::succeeded(AST::new(self.id, matched, children), remaining);
+                let element_result = self.element.parse(&delim_remaining);
+                if element_result.result {
+                    matches_count += 1;
+                    if self.delim.is_some() {
+                        matched.extend(delim_ast.matched.clone());
+                        children.push(delim_ast);
+                    }
+                    matched.extend(element_result.ast.matched.clone());
+                    children.push(element_result.ast);
+                    remaining = element_result.remaining;
+                } else {
+                    mismatch = true;
+                }
             }
         }
 
-        panic!("BUG: Shouldn't happen");
+        if matches_count < self.n {
+            return ParserResult::failed(tokens.clone());
+        } else {
+            return ParserResult::succeeded(AST::new(self.id, matched, children), remaining);
+        }
     }
+}
+
+pub fn many<RuleId>(
+    id: Option<RuleId>,
+    element: Combinators<RuleId>,
+    delim: Option<Combinators<RuleId>>,
+) -> Combinators<RuleId> {
+    Combinators::MatchMany(MatchMany::new(id, element, delim, 0))
+}
+
+pub fn at_least_one<RuleId>(
+    id: Option<RuleId>,
+    element: Combinators<RuleId>,
+    delim: Option<Combinators<RuleId>>,
+) -> Combinators<RuleId> {
+    Combinators::MatchMany(MatchMany::new(id, element, delim, 1))
 }
 
 #[cfg(test)]
@@ -391,7 +393,8 @@ mod test {
     use crate::parser::{
         ast::AST,
         combinators::{
-            at_least_one, many, optional, regex, slit, AndMatch, AtLeastOne, MatchAny, MatchNone, MatchRegex, MatchToken, OrMatch, ParserCombinator
+            at_least_one, many, optional, regex, slit, AndMatch, MatchAny, MatchMany, MatchNone,
+            MatchRegex, MatchToken, OrMatch, ParserCombinator,
         },
         parser_result::ParserResult,
         token_stream::{Token, TokenStream},
@@ -658,7 +661,56 @@ mod test {
     }
 
     #[test]
-    fn test_many_delim_success() {
+    fn test_at_least_one_empty_stream_failure() {
+        let tokens: TokenStream = TokenStream::from_str(vec![]);
+
+        let rule = Some("test");
+        let parser = at_least_one(rule, slit("b"), None);
+
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(result, ParserResult::failed(tokens.clone()));
+    }
+
+    #[test]
+    fn test_at_least_one_stream_done_success() {
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "a"]);
+
+        let rule = Some("test");
+        let parser = at_least_one(rule, slit("a"), None);
+
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(
+            result,
+            ParserResult::succeeded(
+                AST::new(
+                    rule,
+                    vec![Token::str("a"), Token::str("a")],
+                    vec![
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                    ]
+                ),
+                TokenStream::with_offset(Rc::new(vec![Token::str("a"), Token::str("a"),]), 2),
+            )
+        );
+    }
+
+    #[test]
+    fn test_many_none_success() {
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", "b"]);
+
+        let rule = Some("test");
+        let parser = many(rule, slit("b"), None);
+
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(
+            result,
+            ParserResult::succeeded(AST::empty(), tokens.clone())
+        );
+    }
+
+    #[test]
+    fn test_at_least_one_delim_success() {
         let tokens: TokenStream = TokenStream::from_str(vec!["a", ",", "a", ","]);
 
         let rule = Some("test");
@@ -688,5 +740,73 @@ mod test {
                 ),
             )
         );
+    }
+
+    #[test]
+    fn test_many_delim_success() {
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", ",", "a", ","]);
+
+        let rule = Some("test");
+        let parser = many(rule, slit("b"), Some(slit(",")));
+
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(
+            result,
+            ParserResult::succeeded(AST::empty(), tokens.clone())
+        );
+    }
+
+    #[test]
+    fn test_match_many_delim_success() {
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", ",", "a", ",", "a", ","]);
+
+        let rule = Some("test");
+        let parser = MatchMany::new(rule, slit("a"), Some(slit(",")), 3);
+
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(
+            result,
+            ParserResult::succeeded(
+                AST::new(
+                    rule,
+                    vec![
+                        Token::str("a"),
+                        Token::str(","),
+                        Token::str("a"),
+                        Token::str(","),
+                        Token::str("a")
+                    ],
+                    vec![
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str(",")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str(",")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new())
+                    ]
+                ),
+                TokenStream::with_offset(
+                    Rc::new(vec![
+                        Token::str("a"),
+                        Token::str(","),
+                        Token::str("a"),
+                        Token::str(","),
+                        Token::str("a"),
+                        Token::str(",")
+                    ]),
+                    5
+                ),
+            )
+        );
+    }
+
+    #[test]
+    fn test_match_many_delim_failure() {
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", ",", "a", ",", "a", ","]);
+
+        let rule = Some("test");
+        let parser = MatchMany::new(rule, slit("a"), Some(slit(",")), 5);
+
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(result, ParserResult::failed(tokens.clone()));
     }
 }
