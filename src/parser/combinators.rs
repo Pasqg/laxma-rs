@@ -351,42 +351,32 @@ where
             return ParserResult::failed(tokens.clone());
         }
 
-        let mut previous_result = ParserResult::succeeded(
-            AST::new(self.id, result.ast.matched.clone(), vec![result.ast]),
-            result.remaining,
-        );
-        while previous_result.remaining.not_done() {
-            let (delim_result, delim_remaining) = if self.delim.is_some() {
-                let result = self
-                    .delim
-                    .as_ref()
-                    .unwrap()
-                    .parse(&previous_result.remaining);
-                (result.result, result.remaining)
+        let mut matched = result.ast.matched.clone();
+        let mut children = vec![result.ast];
+        let mut remaining = result.remaining;
+        while remaining.not_done() {
+            let (delim_result, delim_ast, delim_remaining) = if self.delim.is_some() {
+                let result = self.delim.as_ref().unwrap().parse(&remaining);
+                (result.result, result.ast, result.remaining)
             } else {
-                (true, previous_result.remaining.clone())
+                (true, AST::empty(), remaining.clone())
             };
 
             if !delim_result {
-                return previous_result;
+                return ParserResult::succeeded(AST::new(self.id, matched, children), remaining);
             }
 
             let element_result = self.element.parse(&delim_remaining);
             if element_result.result {
-                if self.delim.is_none() {
-                    previous_result = ParserResult::succeeded(
-                        previous_result.ast.merge(element_result.ast),
-                        element_result.remaining,
-                    );
-                } else {
-                    let mut ast = previous_result.ast;
-                    for child in element_result.ast.children {
-                        ast = ast.merge(child);
-                    }
-                    previous_result = ParserResult::succeeded(ast, element_result.remaining);
+                if self.delim.is_some() {
+                    matched.extend(delim_ast.matched.clone());
+                    children.push(delim_ast);
                 }
+                matched.extend(element_result.ast.matched.clone());
+                children.push(element_result.ast);
+                remaining = element_result.remaining;
             } else {
-                return previous_result;
+                return ParserResult::succeeded(AST::new(self.id, matched, children), remaining);
             }
         }
 
@@ -401,8 +391,7 @@ mod test {
     use crate::parser::{
         ast::AST,
         combinators::{
-            many, optional, regex, slit, AndMatch, AtLeastOne, MatchAny, MatchNone,
-            MatchRegex, MatchToken, OrMatch, ParserCombinator,
+            at_least_one, many, optional, regex, slit, AndMatch, AtLeastOne, MatchAny, MatchNone, MatchRegex, MatchToken, OrMatch, ParserCombinator
         },
         parser_result::ParserResult,
         token_stream::{Token, TokenStream},
@@ -629,7 +618,7 @@ mod test {
         let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", "b"]);
 
         let rule = Some("test");
-        let parser = AtLeastOne::new(rule, slit("a"), None);
+        let parser = at_least_one(rule, slit("a"), None);
 
         let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
@@ -662,7 +651,7 @@ mod test {
         let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", "b"]);
 
         let rule = Some("test");
-        let parser = AtLeastOne::new(rule, slit("b"), None);
+        let parser = at_least_one(rule, slit("b"), None);
 
         let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(result, ParserResult::failed(tokens.clone()));
@@ -673,7 +662,7 @@ mod test {
         let tokens: TokenStream = TokenStream::from_str(vec!["a", ",", "a", ","]);
 
         let rule = Some("test");
-        let parser = many(rule, slit("a"), Some(slit(",")));
+        let parser = at_least_one(rule, slit("a"), Some(slit(",")));
 
         let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
@@ -688,7 +677,15 @@ mod test {
                         AST::new(None, vec![Token::str("a")], Vec::new())
                     ]
                 ),
-                tokens
+                TokenStream::with_offset(
+                    Rc::new(vec![
+                        Token::str("a"),
+                        Token::str(","),
+                        Token::str("a"),
+                        Token::str(",")
+                    ]),
+                    3
+                ),
             )
         );
     }
