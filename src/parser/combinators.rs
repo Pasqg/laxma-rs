@@ -1,7 +1,9 @@
 use core::panic;
 use std::{
     any::{Any, TypeId},
+    cell::RefCell,
     fmt::Debug,
+    rc::Rc,
 };
 
 use regex::Regex;
@@ -25,6 +27,16 @@ pub enum Combinators<RuleId> {
     AndMatch(AndMatch<RuleId>),
     OrMatch(OrMatch<RuleId>),
     MatchMany(MatchMany<RuleId>),
+    Reference(Reference<RuleId>),
+}
+
+impl<RuleId> Combinators<RuleId> {
+    pub fn bind(&self, parser: Combinators<RuleId>) {
+        match self {
+            Combinators::Reference(reference) => reference.bind(parser),
+            _ => panic!("Cannot bind a non-reference parser"),
+        }
+    }
 }
 
 impl<RuleId> ParserCombinator<RuleId> for Combinators<RuleId>
@@ -40,6 +52,7 @@ where
             Combinators::AndMatch(parser) => parser.parse(tokens),
             Combinators::OrMatch(parser) => parser.parse(tokens),
             Combinators::MatchMany(parser) => parser.parse(tokens),
+            Combinators::Reference(parser) => parser.parse(tokens),
         }
     }
 }
@@ -74,7 +87,6 @@ pub fn slit<RuleId>(token: &str) -> Combinators<RuleId> {
 impl<RuleId> ParserCombinator<RuleId> for MatchToken<RuleId>
 where
     RuleId: Copy,
-    Token: Clone + Eq,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         if tokens.not_done() {
@@ -139,7 +151,6 @@ pub struct MatchNone;
 impl<RuleId> ParserCombinator<RuleId> for MatchNone
 where
     RuleId: Copy,
-    Token: Clone,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         ParserResult::succeeded(AST::empty(), tokens.clone())
@@ -171,7 +182,6 @@ impl<RuleId> MatchAny<RuleId> {
 impl<'a, RuleId> ParserCombinator<RuleId> for MatchAny<RuleId>
 where
     RuleId: Copy,
-    Token: Clone + Eq + 'static,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         if tokens.not_done() {
@@ -208,7 +218,6 @@ pub fn and_match<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combina
 impl<RuleId> ParserCombinator<RuleId> for AndMatch<RuleId>
 where
     RuleId: Copy,
-    Token: Clone + Eq + 'static,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         let mut _remaining = tokens.clone();
@@ -253,7 +262,6 @@ pub fn or_match<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combinat
 impl<RuleId> ParserCombinator<RuleId> for OrMatch<RuleId>
 where
     RuleId: Copy,
-    Token: Clone + Eq + 'static,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         for rule in &self.rules {
@@ -277,7 +285,6 @@ where
 pub fn optional<RuleId>(id: Option<RuleId>, parser: Combinators<RuleId>) -> Combinators<RuleId>
 where
     RuleId: Copy,
-    Token: Clone + Eq + 'static,
 {
     Combinators::OrMatch(OrMatch::new(
         id,
@@ -316,7 +323,6 @@ impl<RuleId> MatchMany<RuleId> {
 impl<RuleId> ParserCombinator<RuleId> for MatchMany<RuleId>
 where
     RuleId: Copy,
-    Token: Clone + Eq + 'static,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         let mut matches_count = 0;
@@ -386,6 +392,51 @@ pub fn at_least_one<RuleId>(
     Combinators::MatchMany(MatchMany::new(id, element, delim, 1))
 }
 
+#[derive(Clone)]
+pub struct Reference<RuleId> {
+    name: Option<&'static str>,
+    reference: Rc<RefCell<Option<Combinators<RuleId>>>>,
+}
+
+impl<RuleId> Reference<RuleId> {
+    pub fn new() -> Self {
+        Self {
+            name: None,
+            reference: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    pub fn named(name: &'static str) -> Self {
+        Self {
+            name: Some(name),
+            reference: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    pub fn bind(&self, parser: Combinators<RuleId>) {
+        if self.reference.borrow().as_ref().is_some() {
+            panic!("Reference parser '{:?}' was already binded!", self.name);
+        }
+        self.reference.replace(Some(parser));
+    }
+}
+
+pub fn parser_ref<RuleId>() -> Combinators<RuleId> {
+    Combinators::Reference(Reference::new())
+}
+
+impl<RuleId> ParserCombinator<RuleId> for Reference<RuleId>
+where
+    RuleId: Copy,
+{
+    fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
+        if self.reference.borrow().as_ref().is_none() {
+            panic!("Reference parser '{:?}' is unbinded!", self.name);
+        }
+        self.reference.borrow().as_ref().unwrap().parse(tokens)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
@@ -393,8 +444,9 @@ mod test {
     use crate::parser::{
         ast::AST,
         combinators::{
-            at_least_one, many, optional, regex, slit, AndMatch, MatchAny, MatchMany, MatchNone,
-            MatchRegex, MatchToken, OrMatch, ParserCombinator,
+            and_match, at_least_one, many, match_none, optional, or_match, parser_ref, regex, slit,
+            AndMatch, Combinators, MatchAny, MatchMany, MatchNone, MatchRegex, MatchToken, OrMatch,
+            ParserCombinator, Reference,
         },
         parser_result::ParserResult,
         token_stream::{Token, TokenStream},
@@ -808,5 +860,49 @@ mod test {
 
         let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(result, ParserResult::failed(tokens.clone()));
+    }
+
+    #[test]
+    fn test_reference_recursion() {
+        let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", ","]);
+
+        let rule = Some("test");
+        let parser = Reference::new();
+        let body = or_match(
+            "test",
+            vec![
+                and_match(
+                    "and",
+                    vec![slit("a"), Combinators::Reference(parser.clone())],
+                ),
+                match_none(),
+            ],
+        );
+        parser.bind(body);
+
+        let result: ParserResult<&str> = parser.parse(&tokens);
+        assert_eq!(
+            result,
+            ParserResult::succeeded(
+                AST::new(
+                    rule,
+                    vec![Token::str("a"), Token::str("a"), Token::str("a"),],
+                    vec![
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![Token::str("a")], Vec::new())
+                    ]
+                ),
+                TokenStream::with_offset(
+                    Rc::new(vec![
+                        Token::str("a"),
+                        Token::str("a"),
+                        Token::str("a"),
+                        Token::str(",")
+                    ]),
+                    3
+                ),
+            )
+        );
     }
 }
