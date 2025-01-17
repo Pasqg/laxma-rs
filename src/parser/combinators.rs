@@ -247,16 +247,25 @@ where
 pub struct OrMatch<RuleId> {
     id: Option<RuleId>,
     rules: Vec<Combinators<RuleId>>,
+    flattened: bool,
 }
 
 impl<RuleId> OrMatch<RuleId> {
-    pub fn new(id: Option<RuleId>, rules: Vec<Combinators<RuleId>>) -> Self {
-        Self { id, rules }
+    pub fn new(id: Option<RuleId>, rules: Vec<Combinators<RuleId>>, flattened: bool) -> Self {
+        Self {
+            id,
+            rules,
+            flattened,
+        }
     }
 }
 
 pub fn or_match<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combinators<RuleId> {
-    Combinators::OrMatch(OrMatch::new(Some(id), rules))
+    Combinators::OrMatch(OrMatch::new(Some(id), rules, false))
+}
+
+pub fn or_match_flat<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combinators<RuleId> {
+    Combinators::OrMatch(OrMatch::new(Some(id), rules, true))
 }
 
 impl<RuleId> ParserCombinator<RuleId> for OrMatch<RuleId>
@@ -272,10 +281,14 @@ where
             } = rule.parse(tokens);
             if result {
                 //todo: probably we don't care about one of children or parent's matched, so we can remove a clone here
-                return ParserResult::succeeded(
-                    AST::new(self.id, ast.matched.clone(), vec![ast]),
-                    remaining,
-                );
+                if self.flattened {
+                    return ParserResult::succeeded(ast, remaining);
+                } else {
+                    return ParserResult::succeeded(
+                        AST::new(self.id, ast.matched.clone(), vec![ast]),
+                        remaining,
+                    );
+                }
             }
         }
         return ParserResult::failed(tokens.clone());
@@ -289,6 +302,7 @@ where
     Combinators::OrMatch(OrMatch::new(
         id,
         vec![parser, Combinators::MatchNone(MatchNone)],
+        false,
     ))
 }
 
@@ -440,13 +454,14 @@ where
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
+    use std::fmt::Debug;
 
     use crate::parser::{
         ast::AST,
         combinators::{
-            and_match, at_least_one, many, match_none, optional, or_match, parser_ref, regex, slit,
-            AndMatch, Combinators, MatchAny, MatchMany, MatchNone, MatchRegex, MatchToken, OrMatch,
-            ParserCombinator, Reference,
+            and_match, at_least_one, many, match_none, optional, or_match, or_match_flat,
+            parser_ref, regex, slit, AndMatch, Combinators, MatchAny, MatchMany, MatchNone,
+            MatchRegex, MatchToken, OrMatch, ParserCombinator, Reference,
         },
         parser_result::ParserResult,
         token_stream::{Token, TokenStream},
@@ -606,7 +621,7 @@ mod test {
         let tokens: TokenStream = TokenStream::from_str(vec!["a", "b"]);
 
         let rule = Some("test");
-        let parser = OrMatch::new(rule, vec![slit("a"), slit("b")]);
+        let parser = OrMatch::new(rule, vec![slit("a"), slit("b")], false);
 
         let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
@@ -627,7 +642,7 @@ mod test {
         let tokens: TokenStream = TokenStream::from_str(vec!["c"]);
 
         let rule = Some("test");
-        let parser = OrMatch::new(rule, vec![slit("a"), slit("b")]);
+        let parser = OrMatch::new(rule, vec![slit("a"), slit("b")], false);
 
         let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(result, ParserResult::failed(tokens));
@@ -866,10 +881,9 @@ mod test {
     fn test_reference_recursion() {
         let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", ","]);
 
-        let rule = Some("test");
         let parser = Reference::new();
-        let body = or_match(
-            "test",
+        let body = or_match_flat(
+            "or",
             vec![
                 and_match(
                     "and",
@@ -881,28 +895,50 @@ mod test {
         parser.bind(body);
 
         let result: ParserResult<&str> = parser.parse(&tokens);
+        let expected = ParserResult::succeeded(
+            AST::new(
+                Some("and"),
+                vec![Token::str("a"), Token::str("a"), Token::str("a")],
+                vec![
+                    AST::new(None, vec![Token::str("a")], Vec::new()),
+                    AST::new(
+                        Some("and"),
+                        vec![Token::str("a"), Token::str("a")],
+                        vec![
+                            AST::new(None, vec![Token::str("a")], Vec::new()),
+                            AST::new(
+                                Some("and"),
+                                vec![Token::str("a")],
+                                vec![
+                                    AST::new(None, vec![Token::str("a")], Vec::new()),
+                                    AST::empty(),
+                                ],
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            TokenStream::with_offset(
+                Rc::new(vec![
+                    Token::str("a"),
+                    Token::str("a"),
+                    Token::str("a"),
+                    Token::str(","),
+                ]),
+                3,
+            ),
+        );
+        assert_result(result, expected);
+    }
+
+    fn assert_result<A>(result: ParserResult<A>, expected: ParserResult<A>)
+    where
+        A: Debug + Eq,
+    {
         assert_eq!(
-            result,
-            ParserResult::succeeded(
-                AST::new(
-                    rule,
-                    vec![Token::str("a"), Token::str("a"), Token::str("a"),],
-                    vec![
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new())
-                    ]
-                ),
-                TokenStream::with_offset(
-                    Rc::new(vec![
-                        Token::str("a"),
-                        Token::str("a"),
-                        Token::str("a"),
-                        Token::str(",")
-                    ]),
-                    3
-                ),
-            )
+            result, expected,
+            "\n{}\nbut expected:\n{}",
+            result.ast, expected.ast
         );
     }
 }
