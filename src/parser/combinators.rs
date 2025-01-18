@@ -1,8 +1,6 @@
 use core::panic;
 use std::{
-    any::{Any, TypeId},
     cell::RefCell,
-    fmt::Debug,
     rc::Rc,
 };
 
@@ -302,7 +300,7 @@ where
     Combinators::OrMatch(OrMatch::new(
         id,
         vec![parser, Combinators::MatchNone(MatchNone)],
-        false,
+        true,
     ))
 }
 
@@ -453,8 +451,8 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::rc::Rc;
     use std::fmt::Debug;
+    use std::rc::Rc;
 
     use crate::parser::{
         ast::AST,
