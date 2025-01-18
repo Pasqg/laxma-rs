@@ -9,6 +9,12 @@ impl Token {
     pub fn str(str: &str) -> Self {
         Self::StringToken(str.to_string())
     }
+
+    pub fn unwrap_str(&self) -> String {
+        match self {
+            Self::StringToken(str) => str.to_owned(),
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
