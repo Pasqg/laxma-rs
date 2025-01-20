@@ -1,0 +1,390 @@
+use std::collections::HashMap;
+
+use crate::parser::ast::AST;
+
+use super::grammar::Rules;
+
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+pub(super) struct Identifier(String);
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+pub(super) struct Number(i64);
+
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+pub(super) enum Type {
+    SimpleType(String),
+    TypeParameter(String),
+    ParametrizedType(String, Vec<Type>),
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+pub(super) enum DestructuringComponent {
+    Identifier(String),
+    Destructuring(Destructuring),
+    Number(i64),
+    None,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub(super) struct Destructuring(Vec<DestructuringComponent>);
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub(super) struct FunctionCall {
+    name: String,
+    parameters: Vec<Expression>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub(super) enum Expression {
+    FunctionCall(FunctionCall),
+    Identifier(String),
+    Number(i64),
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(super) struct FunctionArgument {
+    pub(super) component: DestructuringComponent,
+    pub(super) typing: Type,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(super) struct FunctionDefinition {
+    pub(super) name: String,
+    pub(super) arguments: Vec<FunctionArgument>,
+    pub(super) bodies: Vec<(DestructuringComponent, Expression)>,
+}
+
+fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
+    let name = ast.matched[0].unwrap_str();
+    return match ast.id {
+        Some(Rules::Identifier) => Ok(Type::SimpleType(name)),
+        Some(Rules::TypeParameter) => Ok(Type::TypeParameter(name)),
+        Some(Rules::ParametrizedType) => {
+            let subtype = &ast.children[2];
+            if subtype.id == Some(Rules::Identifier) || subtype.id != Some(Rules::Elements) {
+                let result = type_repr(subtype);
+                if result.is_err() {
+                    return Err(result.unwrap_err());
+                }
+                return Ok(Type::ParametrizedType(name, vec![result.unwrap()]));
+            }
+
+            let mut type_params = Vec::new();
+            for i in (0..subtype.children.len()).step_by(2) {
+                let result = type_repr(&subtype.children[i]);
+                if result.is_err() {
+                    return Err(result.unwrap_err());
+                }
+                type_params.push(result.unwrap());
+            }
+
+            Ok(Type::ParametrizedType(name, type_params))
+        }
+        _ => Err(format!("Expected a type but got {:?}", ast)),
+    };
+}
+
+fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::Destructuring {
+        return Err(format!("Expected a Destructuring AST but got {}", ast));
+    }
+
+    let mut components = Vec::new();
+    for child in &ast.children[1].children {
+        if child.matched.len() > 0 && child.matched[0].unwrap_str() != "," {
+            match child.id {
+                Some(Rules::Identifier) => components.push(DestructuringComponent::Identifier(
+                    child.matched[0].unwrap_str(),
+                )),
+                Some(Rules::Destructuring) => {
+                    let result = destructuring_repr(child);
+                    if result.is_err() {
+                        return Err(result.unwrap_err());
+                    }
+                    components.push(DestructuringComponent::Destructuring(result.unwrap()));
+                }
+                _ => return Err(format!("Unexpected destructuring: {}", child)),
+            }
+        }
+    }
+
+    Ok(Destructuring(components))
+}
+
+fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
+    let arg = &ast.children[0];
+    let result = type_repr(&ast.children[2]);
+    if result.is_err() {
+        return Err(result.unwrap_err());
+    }
+
+    let type_ = result.unwrap();
+    return if arg.id == Some(Rules::Identifier) {
+        Ok(FunctionArgument {
+            component: DestructuringComponent::Identifier(arg.matched[0].unwrap_str()),
+            typing: type_,
+        })
+    } else if arg.id == Some(Rules::Destructuring) {
+        let result = destructuring_repr(&arg);
+        if result.is_err() {
+            Err(result.unwrap_err())
+        } else {
+            Ok(FunctionArgument {
+                component: DestructuringComponent::Destructuring(result.unwrap()),
+                typing: type_,
+            })
+        }
+    } else {
+        Err(format!(
+            "Expected Destructuring or Identifier but got {:?}",
+            arg.id.unwrap()
+        ))
+    };
+}
+
+fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::FunctionSignature {
+        return Err(format!(
+            "Expected a FunctionSignature AST but got {:?}",
+            ast.id
+        ));
+    }
+
+    let function_name = ast.matched[1].unwrap_str();
+    let mut arguments = Vec::new();
+
+    if ast.children.len() > 2 {
+        let node = &ast.children[2];
+        match node.id.unwrap() {
+            Rules::Argument => {
+                let result = argument_repr(ast);
+                if result.is_err() {
+                    return Err(result.unwrap_err());
+                }
+                arguments.push(result.unwrap());
+            }
+            Rules::Arguments => {
+                for child in &node.children {
+                    let result = argument_repr(child);
+                    if result.is_err() {
+                        return Err(result.unwrap_err());
+                    }
+                    arguments.push(result.unwrap());
+                }
+            }
+            _ => panic!("Expected Arguments or Argument but got {:?}", node.id),
+        }
+    }
+
+    Ok((function_name, arguments))
+}
+
+fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::Expression {
+        return Err(format!("Expected Expression but got {}", ast));
+    }
+
+    let body = &ast.children[0];
+    let rule = body.id;
+
+    match rule {
+        Some(Rules::Identifier) => Ok(Expression::Identifier(ast.matched[0].unwrap_str())),
+        Some(Rules::Number) => Ok(Expression::Number(
+            ast.matched[0].unwrap_str().parse::<i64>().unwrap(),
+        )),
+        Some(Rules::FunctionCall) => {
+            let mut parameters = Vec::new();
+            for child in &body.children[2].children {
+                if child.id == Some(Rules::Expression) {
+                    let result = expression_repr(child);
+                    if result.is_err() {
+                        return Err(result.unwrap_err());
+                    }
+                    parameters.push(result.unwrap());
+                }
+            }
+            Ok(Expression::FunctionCall(FunctionCall {
+                name: ast.matched[0].unwrap_str(),
+                parameters,
+            }))
+        }
+        _ => Err(format!(
+            "Expected FunctionCall, Identifier or Number, but got {}",
+            body
+        )),
+    }
+}
+
+fn pattern_matching_repr(
+    ast: &AST<Rules>,
+) -> Result<Vec<(DestructuringComponent, Expression)>, String> {
+    let mut bodies = Vec::new();
+    for pattern in &ast.children {
+        if pattern.id != Some(Rules::Pattern) {
+            return Err(format!("Expected Pattern but got {}", pattern));
+        }
+
+        let destructuring = match pattern.children[0].id {
+            Some(Rules::Identifier) => {
+                DestructuringComponent::Identifier(pattern.matched[0].unwrap_str())
+            }
+            Some(Rules::Destructuring) => {
+                let result = destructuring_repr(&pattern.children[0]);
+                if result.is_err() {
+                    return Err(result.unwrap_err());
+                }
+                DestructuringComponent::Destructuring(result.unwrap())
+            }
+            _ => {
+                return Err(format!(
+                    "Expected Identifier or Destructuring but got {}",
+                    pattern.children[0]
+                ));
+            }
+        };
+
+        let result = expression_repr(&pattern.children[1].children[1]);
+        if result.is_err() {
+            return Err(result.unwrap_err());
+        }
+
+        bodies.push((destructuring, result.unwrap()));
+    }
+    return Ok(bodies);
+}
+
+fn function_repr(ast: &AST<Rules>) -> Result<(String, FunctionDefinition), String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::FunctionDef {
+        return Err(format!("Expected a FunctionDef AST but got {:?}", ast.id));
+    }
+
+    let result = signature_repr(&ast.children[0]);
+    if result.is_err() {
+        return Err(result.unwrap_err());
+    }
+
+    let (name, arguments) = result.unwrap();
+
+    let mut bodies = Vec::new();
+
+    let body = &ast.children[1];
+    if body.id.is_none() {
+        return Err(format!("Expected 'Some' function body"));
+    }
+    let rule = body.id.unwrap();
+
+    if rule == Rules::FunctionBody {
+        let result = expression_repr(&body.children[1]);
+        if result.is_err() {
+            return Err(result.unwrap_err());
+        }
+        bodies.push((DestructuringComponent::None, result.unwrap()));
+    } else if rule == Rules::PatternMatching {
+        let result = pattern_matching_repr(&body.children[1]);
+        if result.is_err() {
+            return Err(result.unwrap_err());
+        }
+        bodies = result.unwrap();
+    } else {
+        return Err(format!(
+            "Expected FunctionBody or PatternMatching but got {}",
+            body
+        ));
+    }
+
+    let definition = FunctionDefinition {
+        name: name.clone(),
+        arguments,
+        bodies,
+    };
+
+    Ok((name, definition))
+}
+
+pub fn to_repr(ast: &AST<Rules>) -> Result<HashMap<String, FunctionDefinition>, String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::Program {
+        return Err(format!("Expected a Program AST but got {:?}", ast.id));
+    }
+
+    let mut functions = HashMap::new();
+    for node in &ast.children {
+        let result = function_repr(node);
+        if result.is_err() {
+            return Err(result.unwrap_err());
+        }
+
+        let (name, definition) = result.unwrap();
+        functions.insert(name, definition);
+    }
+
+    Ok(functions)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use crate::{
+        compiler::{grammar::parser, internal_repr::to_repr},
+        parser::combinators::ParserCombinator,
+        parser::token_stream::TokenStream,
+    };
+
+    #[test]
+    fn test_compile_simple() {
+        let code: Vec<&str> = "
+        fun double x : Result [ int , String ] -> + ( x , x )
+        fun first { x xs } : List [ 'T ] -> x
+        fun rest { x xs } : List [ 'T ] = Empty -> x { x xs } -> xs
+        "
+        .split_whitespace()
+        .collect();
+        let tokens = TokenStream::from_str(code);
+        let result = parser().parse(&tokens);
+
+        assert!(result.result);
+        print!("{}", result.ast);
+
+        let result = to_repr(&result.ast);
+        if result.is_err() {
+            panic!("{:?}", result.unwrap_err());
+        }
+        print!("{:?}", result.unwrap());
+    }
+
+    #[test]
+    fn test_example() {
+        let code: Vec<&str> = "
+
+        fun first { x xs } : List [ 'T ] -> x
+        fun rest { x xs } : List [ 'T ] -> xs
+
+        fun is_empty x : List [ 'T ] =
+            Empty -> true
+            { x xs } -> false
+
+        fun length x : List [ 'T ] =
+            Empty -> 0
+            { _ xs } -> + ( 1 , length ( xs ) )
+
+        fun sum x : int y : int -> + ( x , y )
+
+        "
+        .split_whitespace()
+        .collect();
+        let tokens = TokenStream::from_str(code);
+        let result = parser().parse(&tokens);
+
+        let no_exclusion = HashSet::new();
+        println!("{}", result.ast.prune(&no_exclusion, &no_exclusion));
+        println!(
+            "{:?}",
+            result
+                .ast
+                .matched
+                .into_iter()
+                .map(|x| x.unwrap_str())
+                .collect::<Vec<String>>()
+        );
+    }
+}
