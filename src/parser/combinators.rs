@@ -299,8 +299,8 @@ pub fn or_match<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combinat
     Combinators::OrMatch(OrMatch::new(Some(id), rules, false))
 }
 
-pub fn or_match_flat<RuleId>(id: RuleId, rules: Vec<Combinators<RuleId>>) -> Combinators<RuleId> {
-    Combinators::OrMatch(OrMatch::new(Some(id), rules, true))
+pub fn or_match_flat<RuleId>(rules: Vec<Combinators<RuleId>>) -> Combinators<RuleId> {
+    Combinators::OrMatch(OrMatch::new(None, rules, true))
 }
 
 impl<RuleId> ParserCombinator<RuleId> for OrMatch<RuleId>
@@ -719,11 +719,7 @@ mod test {
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(
-                    None,
-                    vec![Token::str("a")],
-                    vec![]
-                ),
+                AST::new(None, vec![Token::str("a")], vec![]),
                 TokenStream::with_offset(Rc::new(vec![Token::str("a")]), 1)
             )
         );
@@ -733,7 +729,7 @@ mod test {
     fn test_optional_none() {
         let tokens: TokenStream = TokenStream::from_str(vec!["a"]);
 
-        let parser = optional( slit("b"));
+        let parser = optional(slit("b"));
 
         let result: ParserResult<&str> = parser.parse(&tokens);
         assert_eq!(
@@ -941,16 +937,13 @@ mod test {
         let tokens: TokenStream = TokenStream::from_str(vec!["a", "a", "a", ","]);
 
         let parser = Reference::new();
-        let body = or_match_flat(
-            "or",
-            vec![
-                and_match(
-                    "and",
-                    vec![slit("a"), Combinators::Reference(parser.clone())],
-                ),
-                match_none(),
-            ],
-        );
+        let body = or_match_flat(vec![
+            and_match(
+                "and",
+                vec![slit("a"), Combinators::Reference(parser.clone())],
+            ),
+            match_none(),
+        ]);
         parser.bind(body);
 
         let result: ParserResult<&str> = parser.parse(&tokens);
