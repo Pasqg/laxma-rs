@@ -42,6 +42,7 @@ pub(super) struct FunctionCall {
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub(super) enum Expression {
+    TypeConstructor(String, String, Vec<Expression>),
     FunctionCall(FunctionCall),
     Identifier(String),
     Number(i64),
@@ -220,6 +221,23 @@ fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
                 parameters,
             }))
         }
+        Some(Rules::TypeConstructor) => {
+            let mut parameters = Vec::new();
+            for child in &body.children[4].children {
+                if child.id == Some(Rules::Expression) {
+                    let result = expression_repr(child);
+                    if result.is_err() {
+                        return Err(result.unwrap_err());
+                    }
+                    parameters.push(result.unwrap());
+                }
+            }
+            Ok(Expression::TypeConstructor(
+                ast.matched[0].unwrap_str(),
+                ast.matched[2].unwrap_str(),
+                parameters,
+            ))
+        }
         _ => Err(format!(
             "Expected FunctionCall, Identifier or Number, but got {}",
             body
@@ -324,7 +342,7 @@ fn type_variant_repr(ast: &AST<Rules>) -> Result<(String, TypeVariant), String> 
             }
             components.push(result.unwrap());
         }
-        return Ok((name.clone(), TypeVariant::Cartesian(name, components)))
+        return Ok((name.clone(), TypeVariant::Cartesian(name, components)));
     }
 
     Ok((name.clone(), TypeVariant::Constant(name)))

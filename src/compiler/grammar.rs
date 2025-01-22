@@ -14,6 +14,7 @@ pub enum Rules {
     Argument,
     Destructuring,
 
+    TypeConstructor,
     FunctionCall,
     Arguments,
     Expression,
@@ -31,42 +32,20 @@ pub enum Rules {
     Program,
 }
 
-/*
-# The type List is either a Empty or tuple of T and a List
-type List['T] -> Empty | NonEmpty = 'T List['T]
-type Result['T, 'E] -> Error = 'E | Ok = 'T
-
-// { } parameter destructuring matching type?
-// if argument doesn't conform (i.e. empty list) -> panic!
-fun first {x, xs}:List['T] -> x
-fun rest {x, xs}:List['T] -> xs
-
-fun length x:List['T] =
-    Empty -> 0
-    {_, xs} -> +(1, length(xs))
-
-
-fun sum x:int y:int -> +(x, y)
-
-sumlist x:List[int] =
-    empty? -> 0
-     -> sum(first(x), sumlist(rest(x)))
-*/
-
 pub fn parser() -> Combinators<Rules> {
     let identifier = || {
         exclude(
             Combinators::MatchRegex(MatchRegex::new(
                 Some(Rules::Identifier),
-                r"[a-zA-Z?_\+\-\*\/∅]+",
+                r"[a-zA-Z?_\+\-\*\/:]+",
             )),
-            or_match_flat(vec![slit("fun"), slit("type")]),
+            or_match_flat(vec![slit("fn"), slit("type")]),
         )
     };
     let number = || Combinators::MatchRegex(MatchRegex::new(Some(Rules::Number), r"[0-9]+"));
     let type_parameter: Combinators<Rules> = Combinators::MatchRegex(MatchRegex::new(
         Some(Rules::TypeParameter),
-        r"'[a-zA-Z?_\+\-\*\/]+",
+        r"'[a-zA-Z]+",
     ));
 
     let destructuring: Combinators<Rules> = at_least_n(
@@ -102,7 +81,7 @@ pub fn parser() -> Combinators<Rules> {
     );
 
     let expression = parser_ref();
-    let function_call: Combinators<Rules> = and_match(
+    let function_call = || and_match(
         Rules::FunctionCall,
         vec![
             identifier(),
@@ -116,16 +95,32 @@ pub fn parser() -> Combinators<Rules> {
         ],
     );
 
-    let expression_body: Combinators<Rules> = or_match(
+    let type_constructor = || and_match(
+        Rules::TypeConstructor,
+        vec![
+            identifier(),
+            slit("::"),
+            identifier(),
+            slit("("),
+            many(
+                Some(Rules::Elements),
+                expression.clone(),
+                Some(optional(slit(","))),
+            ),
+            slit(")"),
+        ],
+    );
+
+    let expression_body= or_match(
         Rules::Expression,
-        vec![function_call.clone(), identifier(), number()],
+        vec![function_call(), type_constructor(), identifier(), number()],
     );
     expression.bind(expression_body);
 
-    let function_signature: Combinators<Rules> = and_match(
+    let function_signature = and_match(
         Rules::FunctionSignature,
         vec![
-            slit("fun"),
+            slit("fn"),
             identifier(),
             many(Some(Rules::Arguments), argument.clone(), None),
         ],
