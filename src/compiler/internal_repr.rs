@@ -5,16 +5,22 @@ use crate::parser::ast::AST;
 use super::grammar::Rules;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
-pub(super) struct Identifier(String);
-
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
-pub(super) struct Number(i64);
-
-#[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub(super) enum Type {
     SimpleType(String),
     TypeParameter(String),
     ParametrizedType(String, Vec<Type>),
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(super) enum TypeVariant {
+    Constant(String),
+    Cartesian(String, Vec<Type>),
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(super) struct TypeDefinition {
+    pub(super) def: Type,
+    pub(super) variants: HashMap<String, TypeVariant>,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
@@ -26,12 +32,12 @@ pub(super) enum DestructuringComponent {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub(super) struct Destructuring(Vec<DestructuringComponent>);
+pub(super) struct Destructuring(pub(super) Vec<DestructuringComponent>);
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub(super) struct FunctionCall {
-    name: String,
-    parameters: Vec<Expression>,
+    pub(super) name: String,
+    pub(super) parameters: Vec<Expression>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
@@ -52,6 +58,12 @@ pub(super) struct FunctionDefinition {
     pub(super) name: String,
     pub(super) arguments: Vec<FunctionArgument>,
     pub(super) bodies: Vec<(DestructuringComponent, Expression)>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(super) struct Program {
+    pub(super) functions: HashMap<String, FunctionDefinition>,
+    pub(super) types: HashMap<String, TypeDefinition>,
 }
 
 fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
@@ -90,7 +102,7 @@ fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
     }
 
     let mut components = Vec::new();
-    for child in &ast.children[1].children {
+    for child in &ast.children {
         if child.matched.len() > 0 && child.matched[0].unwrap_str() != "," {
             match child.id {
                 Some(Rules::Identifier) => components.push(DestructuringComponent::Identifier(
@@ -301,23 +313,104 @@ fn function_repr(ast: &AST<Rules>) -> Result<(String, FunctionDefinition), Strin
     Ok((name, definition))
 }
 
-pub fn to_repr(ast: &AST<Rules>) -> Result<HashMap<String, FunctionDefinition>, String> {
+fn type_variant_repr(ast: &AST<Rules>) -> Result<(String, TypeVariant), String> {
+    let name = ast.matched[0].unwrap_str();
+    if ast.children[1].id == Some(Rules::Elements) {
+        let mut components = Vec::new();
+        for child in &ast.children[1].children {
+            let result = type_repr(child);
+            if result.is_err() {
+                return Err(result.unwrap_err());
+            }
+            components.push(result.unwrap());
+        }
+        return Ok((name.clone(), TypeVariant::Cartesian(name, components)))
+    }
+
+    Ok((name.clone(), TypeVariant::Constant(name)))
+}
+
+fn type_definition_repr(ast: &AST<Rules>) -> Result<(String, TypeDefinition), String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::TypeDef {
+        return Err(format!("Expected a TypeDef AST but got {:?}", ast.id));
+    }
+
+    if ast.children[1].id == Some(Rules::TypeParameter) {
+        return Err(format!(
+            "New type name cannot be a type parameter, got {}",
+            ast
+        ));
+    }
+
+    let type_name = type_repr(&ast.children[1]);
+    if type_name.is_err() {
+        return Err(type_name.unwrap_err());
+    }
+    let type_name = type_name.unwrap();
+
+    let mut variants = HashMap::new();
+    for child in &ast.children[3].children {
+        if child.id == Some(Rules::TypeDef) {
+            let result = type_variant_repr(&child);
+            if result.is_err() {
+                return Err(result.unwrap_err());
+            }
+            let (name, variant) = result.unwrap();
+            variants.insert(name, variant);
+        }
+    }
+
+    let definition = TypeDefinition {
+        def: type_name.clone(),
+        variants: variants,
+    };
+
+    let name = match type_name {
+        Type::SimpleType(name) => name,
+        Type::TypeParameter(name) => name,
+        Type::ParametrizedType(name, _) => name,
+    };
+
+    Ok((name, definition))
+}
+
+pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::Program {
         return Err(format!("Expected a Program AST but got {:?}", ast.id));
     }
 
     let mut functions = HashMap::new();
+    let mut types = HashMap::new();
     for node in &ast.children {
-        let result = function_repr(node);
-        if result.is_err() {
-            return Err(result.unwrap_err());
-        }
+        match node.id {
+            Some(Rules::FunctionDef) => {
+                let result = function_repr(node);
+                if result.is_err() {
+                    return Err(result.unwrap_err());
+                }
 
-        let (name, definition) = result.unwrap();
-        functions.insert(name, definition);
+                let (name, definition) = result.unwrap();
+                functions.insert(name, definition);
+            }
+            Some(Rules::TypeDef) => {
+                let result = type_definition_repr(node);
+                if result.is_err() {
+                    return Err(result.unwrap_err());
+                }
+
+                let (name, definition) = result.unwrap();
+                types.insert(name, definition);
+            }
+            _ => {
+                return Err(format!(
+                    "Expected FunctionDefinition or TypeDefinition at top level but got {:?}",
+                    node.id
+                ));
+            }
+        }
     }
 
-    Ok(functions)
+    Ok(Program { functions, types })
 }
 
 #[cfg(test)]

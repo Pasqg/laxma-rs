@@ -1,6 +1,6 @@
 use crate::parser::combinators::{
-    and_match, at_least_one, many, optional, or_match, or_match_flat, parser_ref, regex, slit,
-    Combinators, MatchRegex,
+    and_match, at_least_n, at_least_one, exclude, many, optional, or_match, or_match_flat,
+    parser_ref, regex, slit, Combinators, MatchRegex,
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -55,10 +55,13 @@ sumlist x:List[int] =
 
 pub fn parser() -> Combinators<Rules> {
     let identifier = || {
-        Combinators::MatchRegex(MatchRegex::new(
-            Some(Rules::Identifier),
-            r"[a-zA-Z?_\+\-\*\/]+",
-        ))
+        exclude(
+            Combinators::MatchRegex(MatchRegex::new(
+                Some(Rules::Identifier),
+                r"[a-zA-Z?_\+\-\*\/∅]+",
+            )),
+            or_match_flat(vec![slit("fun"), slit("type")]),
+        )
     };
     let number = || Combinators::MatchRegex(MatchRegex::new(Some(Rules::Number), r"[0-9]+"));
     let type_parameter: Combinators<Rules> = Combinators::MatchRegex(MatchRegex::new(
@@ -66,21 +69,14 @@ pub fn parser() -> Combinators<Rules> {
         r"'[a-zA-Z?_\+\-\*\/]+",
     ));
 
-    let destructuring: Combinators<Rules> = and_match(
-        Rules::Destructuring,
-        vec![
-            slit("{"),
-            at_least_one(
-                Some(Rules::Destructuring),
-                identifier(),
-                Some(optional(None, slit(","))),
-            ),
-            slit("}"),
-        ],
+    let destructuring: Combinators<Rules> = at_least_n(
+        Some(Rules::Destructuring),
+        identifier(),
+        Some(optional(slit(","))),
+        2,
     );
 
-    let basic_type_name =
-        || or_match_flat(Rules::TypeName, vec![type_parameter.clone(), identifier()]);
+    let basic_type_name = || or_match_flat(vec![type_parameter.clone(), identifier()]);
 
     let type_name = parser_ref();
     let parametrized_type = || {
@@ -94,15 +90,12 @@ pub fn parser() -> Combinators<Rules> {
             ],
         )
     };
-    type_name.bind(or_match_flat(
-        Rules::TypeName,
-        vec![parametrized_type(), basic_type_name()],
-    ));
+    type_name.bind(or_match_flat(vec![parametrized_type(), basic_type_name()]));
 
     let argument: Combinators<Rules> = and_match(
         Rules::Argument,
         vec![
-            or_match_flat(Rules::Argument, vec![destructuring.clone(), identifier()]),
+            or_match_flat(vec![/*destructuring.clone(), */ identifier()]),
             slit(":"),
             type_name.clone(),
         ],
@@ -114,7 +107,11 @@ pub fn parser() -> Combinators<Rules> {
         vec![
             identifier(),
             slit("("),
-            many(Some(Rules::Arguments), expression.clone(), Some(slit(","))),
+            many(
+                Some(Rules::Arguments),
+                expression.clone(),
+                Some(optional(slit(","))),
+            ),
             slit(")"),
         ],
     );
@@ -144,10 +141,7 @@ pub fn parser() -> Combinators<Rules> {
                 and_match(
                     Rules::Pattern,
                     vec![
-                        or_match_flat(
-                            Rules::Destructuring,
-                            vec![destructuring.clone(), identifier()],
-                        ),
+                        or_match_flat(vec![destructuring.clone(), identifier()]),
                         function_body(),
                     ],
                 ),
@@ -160,16 +154,35 @@ pub fn parser() -> Combinators<Rules> {
         Rules::FunctionDef,
         vec![
             function_signature.clone(),
-            or_match_flat(
-                Rules::FunctionBody,
-                vec![function_pattern_matching.clone(), function_body()],
+            or_match_flat(vec![function_pattern_matching.clone(), function_body()]),
+        ],
+    );
+
+    let type_def = and_match(
+        Rules::TypeDef,
+        vec![
+            slit("type"),
+            type_name.clone(),
+            slit("->"),
+            at_least_one(
+                None,
+                and_match(
+                    Rules::TypeDef,
+                    vec![
+                        identifier(),
+                        many(Some(Rules::Elements), type_name.clone(), None),
+                    ],
+                ),
+                Some(slit("|")),
             ),
         ],
     );
 
-    let type_def = and_match(Rules::TypeDef, vec![slit("type"), parametrized_type()]);
-
-    let program: Combinators<Rules> = many(Some(Rules::Program), function_def.clone(), None);
+    let program: Combinators<Rules> = many(
+        Some(Rules::Program),
+        or_match_flat(vec![function_def.clone(), type_def.clone()]),
+        None,
+    );
 
     return program;
 }

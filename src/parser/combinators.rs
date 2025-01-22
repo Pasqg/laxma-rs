@@ -430,7 +430,7 @@ pub fn many<RuleId>(
     element: Combinators<RuleId>,
     delim: Option<Combinators<RuleId>>,
 ) -> Combinators<RuleId> {
-    Combinators::MatchMany(MatchMany::new(id, element, delim, 0))
+    at_least_n(id, element, delim, 0)
 }
 
 pub fn at_least_one<RuleId>(
@@ -438,7 +438,16 @@ pub fn at_least_one<RuleId>(
     element: Combinators<RuleId>,
     delim: Option<Combinators<RuleId>>,
 ) -> Combinators<RuleId> {
-    Combinators::MatchMany(MatchMany::new(id, element, delim, 1))
+    at_least_n(id, element, delim, 1)
+}
+
+pub fn at_least_n<RuleId>(
+    id: Option<RuleId>,
+    element: Combinators<RuleId>,
+    delim: Option<Combinators<RuleId>>,
+    n: u32,
+) -> Combinators<RuleId> {
+    Combinators::MatchMany(MatchMany::new(id, element, delim, n))
 }
 
 #[derive(Clone)]
