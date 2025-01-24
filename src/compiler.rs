@@ -1,0 +1,325 @@
+use std::collections::{HashMap, HashSet};
+
+use grammar::Rules;
+use internal_repr::{
+    to_repr, DestructuringComponent, Expression, FunctionArgument, FunctionCall,
+    FunctionDefinition, Type, TypeDefinition, TypeVariant,
+};
+
+use crate::parser::ast::AST;
+
+mod grammar;
+mod internal_repr;
+
+fn compile_argument(argument: &FunctionArgument) -> Result<(String, String), String> {
+    match &argument.component {
+        DestructuringComponent::Identifier(name) => {
+            Ok((name.clone(), compile_type(&argument.typing)))
+        }
+        /*DestructuringComponent::Destructuring(destructuring) => {
+            Ok(format!("destructuring: {}", compile_type(&argument.typing)))
+        }*/
+        _ => Err(format!(
+            "Unsupported destructuring of function argument: {:?}",
+            argument.component
+        )),
+    }
+}
+
+fn compile_function_call(function_call: &FunctionCall) -> String {
+    format!(
+        "{}({})",
+        function_call.name,
+        function_call
+            .parameters
+            .iter()
+            .map(|expr| compile_expression(expr))
+            .collect::<Vec<String>>()
+            .join(", ")
+    )
+}
+
+fn compile_expression(expression: &Expression) -> String {
+    match expression {
+        Expression::FunctionCall(function_call) => compile_function_call(function_call),
+        Expression::TypeConstructor(type_name, constant, expressions) => {
+            format!(
+                "{}::{}({})",
+                type_name,
+                constant,
+                expressions
+                    .iter()
+                    .map(|expr| compile_expression(expr))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )
+        }
+        Expression::Identifier(var) => format!("{}", var),
+        Expression::Number(n) => format!("{}", n),
+    }
+}
+
+fn compile_function(
+    definition: &FunctionDefinition,
+    types: &HashMap<String, TypeDefinition>,
+    primitive_types: &HashSet<String>,
+) -> Result<String, String> {
+    let function_name = &definition.name;
+    let mut type_parameters = HashSet::new();
+    let mut args = Vec::new();
+    for argument in &definition.arguments {
+        //todo: separate validation?
+        let arg_type = argument.typing.name();
+        if !primitive_types.contains(arg_type) && !types.contains_key(arg_type) {
+            return Err(format!("'{}' is not a valid type", arg_type));
+        }
+
+        let arg_type = types.get(arg_type);
+        if arg_type.is_some() {
+            for parameter in arg_type.unwrap().def.type_parameters() {
+                type_parameters.insert(parameter);
+            }
+        }
+
+        let result = compile_argument(&argument);
+        if result.is_err() {
+            return Err(result.unwrap_err());
+        }
+
+        args.push(result.unwrap());
+    }
+
+    let body;
+    let is_simple_body =
+        definition.bodies.len() == 1 && definition.bodies[0].0 == DestructuringComponent::None;
+    if definition.bodies.is_empty() || is_simple_body {
+        let (_, expression) = &definition.bodies[0];
+        body = compile_expression(expression);
+    } else {
+        let mut patterns = Vec::new();
+        for (pattern, expression) in &definition.bodies {
+            let expr = compile_expression(expression);
+            //todo: for multiple destructurings use incremental arg ids
+            let arg_type = definition.arguments[0].typing.name();
+            match pattern {
+                DestructuringComponent::Identifier(variant) => {
+                    let type_definition = types.get(arg_type);
+                    let constant = if type_definition.is_some() {
+                        if !type_definition.unwrap().variants.contains_key(variant) {
+                            return Err(format!(
+                                "Variant {variant} doesn't exist for type {arg_type}"
+                            ));
+                        }
+                        format!("{arg_type}::{variant}")
+                    } else {
+                        variant.clone()
+                    };
+                    patterns.push(format!("        {constant}() => {expr},"))
+                }
+                DestructuringComponent::Number(n) => {
+                    patterns.push(format!("        {n} => {expr},"))
+                }
+                DestructuringComponent::None => panic!("Unsupported"),
+                DestructuringComponent::Destructuring(destructuring) => {
+                    let constant = if types.contains_key(arg_type) {
+                        format!("{arg_type}::{}", destructuring.0)
+                    } else {
+                        destructuring.0.clone()
+                    };
+
+                    let mut components = Vec::new();
+                    for component in &destructuring.1 {
+                        match component {
+                            DestructuringComponent::Identifier(x) => components.push(x.clone()),
+                            _ => {
+                                return Err(
+                                    "Only DestructuringComponent::Identifier is supported for now"
+                                        .to_owned(),
+                                )
+                            }
+                        }
+                    }
+                    patterns.push(format!(
+                        "        {constant}({}) => {expr},",
+                        components
+                            .iter()
+                            .map(|s| s.as_str())
+                            .collect::<Vec<&str>>()
+                            .join(", "),
+                    ));
+                }
+            }
+        }
+        body = format!(
+            "
+    match ({}) {{
+{}
+        _ => panic!(\"Non-exhaustive pattern matching in function {}\"),
+    }}
+        ",
+            args.iter()
+                .map(|(arg, _)| arg.clone())
+                .collect::<Vec<String>>()
+                .join(","),
+            patterns.join("\n"),
+            function_name
+        );
+    }
+
+    Ok(format!(
+        "
+fn {function_name}{}({}) {{
+    {body}
+}}
+    
+    ",
+        if type_parameters.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<{}>",
+                type_parameters
+                    .into_iter()
+                    .map(|x| x[1..].to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )
+        },
+        args.iter()
+            .map(|(arg, _type)| format!("{}: {}", arg, _type))
+            .collect::<Vec<String>>()
+            .join(","),
+    ))
+}
+
+fn compile_type(_type: &Type) -> String {
+    match _type {
+        Type::SimpleType(name) => name.clone(),
+        Type::ParametrizedType(name, vec) => format!(
+            "{}<{}>",
+            name,
+            vec.iter()
+                .map(|t| compile_type(t))
+                .collect::<Vec<String>>()
+                .join(", ")
+        ),
+        Type::TypeParameter(name) => name[1..].to_string(),
+    }
+}
+
+fn compile_type_definition(definition: &TypeDefinition) -> Result<String, String> {
+    let type_name = match &definition.def {
+        Type::SimpleType(name) => name,
+        Type::ParametrizedType(_, _) => &compile_type(&definition.def),
+        _ => return Err(format!("Unexpected type name {:?}", definition.def)),
+    };
+
+    let mut variants = Vec::new();
+    for (name, variant) in &definition.variants {
+        variants.push(match variant {
+            TypeVariant::Constant(_) => format!("    {}(),", name),
+            TypeVariant::Cartesian(_, vec) => format!(
+                "    {}({}),",
+                name,
+                vec.iter()
+                    .map(|t| format!("Box<{}>", compile_type(t)))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        });
+    }
+
+    Ok(format!(
+        "
+pub enum {} {{
+{}
+}}
+    ",
+        type_name,
+        variants.join("\n")
+    ))
+}
+
+pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
+    let result = to_repr(ast);
+    if result.is_err() {
+        return Err(result.unwrap_err());
+    }
+
+    //todo: add primitives
+    let program = result.unwrap();
+    println!("{:?}", program);
+
+    let mut code = "type Int = i64;\n".to_owned();
+
+    for (_, definition) in &program.types {
+        let result = compile_type_definition(definition);
+        if result.is_err() {
+            return Err(result.unwrap_err());
+        }
+        code.push_str(&result.unwrap());
+    }
+
+    let primitive_types =
+        HashSet::from(["Int".to_string(), "String".to_string(), "Bool".to_string()]);
+    for (_, definition) in &program.functions {
+        let result = compile_function(definition, &program.types, &primitive_types);
+        if result.is_err() {
+            return Err(result.unwrap_err());
+        }
+        code.push_str(&result.unwrap());
+    }
+
+    Ok(code)
+}
+
+pub enum List<T> {
+    NonEmpty(Box<T>, Box<List<T>>),
+    Empty(),
+}
+
+fn length<T>(x: List<T>) -> List<T> {
+    List::Empty()
+}
+
+#[cfg(test)]
+mod test {
+    use std::fs;
+
+    use crate::compiler::compile;
+    use crate::parser::combinators::ParserCombinator;
+    use crate::{compiler::grammar::parser, parser::token_stream::TokenStream};
+
+    #[test]
+    fn compile_test() {
+        let code: Vec<&str> = "
+        type Optional [ 'T ] -> None | Some 'T
+        type List [ 'T ] -> Empty | NonEmpty 'T List [ 'T ]
+        type Tree [ 'T ] -> Nil | Node 'T Tree [ 'T ] Tree [ 'T ]
+        type IntList -> Empty | List Int IntList
+        type Byte -> b0 | b1
+
+        fn is_empty lst : List [ 'T ] =
+            Empty -> true
+            NonEmpty x -> false
+
+        "
+        .split_whitespace()
+        .collect();
+        let tokens = TokenStream::from_str(code);
+        let result = parser().parse(&tokens);
+
+        assert!(result.result);
+        print!("{}", result.ast);
+
+        let result = compile(&result.ast);
+        if result.is_err() {
+            panic!("{:?}", result.unwrap_err());
+        }
+
+        let code = result.unwrap();
+        print!("{}", code);
+
+        fs::write("src/output.rs", code).expect("Unable to write file");
+    }
+}
