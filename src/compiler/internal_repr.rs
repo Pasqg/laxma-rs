@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::parser::ast::AST;
 
@@ -9,6 +9,32 @@ pub(super) enum Type {
     SimpleType(String),
     TypeParameter(String),
     ParametrizedType(String, Vec<Type>),
+}
+
+impl Type {
+    pub fn name(&self) -> &String {
+        match self {
+            Type::SimpleType(name) => name,
+            Type::TypeParameter(name) => name,
+            Type::ParametrizedType(name, _) => name,
+        }
+    }
+
+    pub fn type_parameters(&self) -> HashSet<String> {
+        match self {
+            Type::SimpleType(_) => HashSet::new(),
+            Type::TypeParameter(param) => HashSet::from([param.clone()]),
+            Type::ParametrizedType(_, vec) => {
+                let mut parameters = HashSet::new();
+                for t in vec {
+                    for parameter in t.type_parameters() {
+                        parameters.insert(parameter);
+                    }
+                }
+                parameters
+            },
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
