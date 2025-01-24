@@ -37,13 +37,13 @@ pub fn parser() -> Combinators<Rules> {
         exclude(
             Combinators::MatchRegex(MatchRegex::new(
                 Some(Rules::Identifier),
-                r"[a-zA-Z?_\+\-\*\/:]+",
+                r"[a-zA-Z?_\+\-\*\/:][a-zA-Z?_\+\-\*\/:0-9]*",
             )),
             or_match_flat(vec![slit("fn"), slit("type")]),
         )
     };
     let number = || Combinators::MatchRegex(MatchRegex::new(Some(Rules::Number), r"[0-9]+"));
-    let type_parameter: Combinators<Rules> = Combinators::MatchRegex(MatchRegex::new(
+    let type_parameter = || Combinators::MatchRegex(MatchRegex::new(
         Some(Rules::TypeParameter),
         r"'[a-zA-Z]+",
     ));
@@ -55,7 +55,7 @@ pub fn parser() -> Combinators<Rules> {
         2,
     );
 
-    let basic_type_name = || or_match_flat(vec![type_parameter.clone(), identifier()]);
+    let basic_type_name = || or_match_flat(vec![type_parameter(), identifier()]);
 
     let type_name = parser_ref();
     let parametrized_type = || {
@@ -136,7 +136,7 @@ pub fn parser() -> Combinators<Rules> {
                 and_match(
                     Rules::Pattern,
                     vec![
-                        or_match_flat(vec![destructuring.clone(), identifier()]),
+                        or_match_flat(vec![destructuring.clone(), identifier(), number()]),
                         function_body(),
                     ],
                 ),

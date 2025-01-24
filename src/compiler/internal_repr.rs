@@ -58,7 +58,7 @@ pub(super) enum DestructuringComponent {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub(super) struct Destructuring(pub(super) Vec<DestructuringComponent>);
+pub(super) struct Destructuring(pub(super) String, pub(super) Vec<DestructuringComponent>);
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub(super) struct FunctionCall {
@@ -128,13 +128,19 @@ fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
         return Err(format!("Expected a Destructuring AST but got {}", ast));
     }
 
+    let mut first_component = None;
     let mut components = Vec::new();
     for child in &ast.children {
         if child.matched.len() > 0 && child.matched[0].unwrap_str() != "," {
             match child.id {
-                Some(Rules::Identifier) => components.push(DestructuringComponent::Identifier(
-                    child.matched[0].unwrap_str(),
-                )),
+                Some(Rules::Identifier) => {
+                    let result = child.matched[0].unwrap_str();
+                    if first_component.is_none() {
+                        first_component = Some(result);
+                    } else {
+                        components.push(DestructuringComponent::Identifier(result));
+                    }
+                }
                 Some(Rules::Destructuring) => {
                     let result = destructuring_repr(child);
                     if result.is_err() {
@@ -147,7 +153,7 @@ fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
         }
     }
 
-    Ok(Destructuring(components))
+    Ok(Destructuring(first_component.expect("Bug! Destructuring cannot be empty"), components))
 }
 
 fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
@@ -290,6 +296,9 @@ fn pattern_matching_repr(
                     return Err(result.unwrap_err());
                 }
                 DestructuringComponent::Destructuring(result.unwrap())
+            }
+            Some(Rules::Number) => {
+                DestructuringComponent::Number(pattern.matched[0].unwrap_str().parse().unwrap())
             }
             _ => {
                 return Err(format!(
