@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use crate::parser::ast::AST;
@@ -9,6 +10,7 @@ pub(super) enum Type {
     SimpleType(String),
     TypeParameter(String),
     ParametrizedType(String, Vec<Type>),
+    Unknown,
 }
 
 impl Type {
@@ -17,6 +19,7 @@ impl Type {
             Type::SimpleType(name) => name,
             Type::TypeParameter(name) => name,
             Type::ParametrizedType(name, _) => name,
+            Type::Unknown => panic!("Uknown type doesn't have name"),
         }
     }
 
@@ -32,7 +35,8 @@ impl Type {
                     }
                 }
                 parameters
-            },
+            }
+            Type::Unknown => HashSet::new(),
         }
     }
 }
@@ -76,7 +80,7 @@ pub(super) enum Expression {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionArgument {
-    pub(super) component: DestructuringComponent,
+    pub(super) identifier: String,
     pub(super) typing: Type,
 }
 
@@ -153,7 +157,10 @@ fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
         }
     }
 
-    Ok(Destructuring(first_component.expect("Bug! Destructuring cannot be empty"), components))
+    Ok(Destructuring(
+        first_component.expect("Bug! Destructuring cannot be empty"),
+        components,
+    ))
 }
 
 fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
@@ -166,22 +173,12 @@ fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
     let type_ = result.unwrap();
     return if arg.id == Some(Rules::Identifier) {
         Ok(FunctionArgument {
-            component: DestructuringComponent::Identifier(arg.matched[0].unwrap_str()),
+            identifier: arg.matched[0].unwrap_str(),
             typing: type_,
         })
-    } else if arg.id == Some(Rules::Destructuring) {
-        let result = destructuring_repr(&arg);
-        if result.is_err() {
-            Err(result.unwrap_err())
-        } else {
-            Ok(FunctionArgument {
-                component: DestructuringComponent::Destructuring(result.unwrap()),
-                typing: type_,
-            })
-        }
     } else {
         Err(format!(
-            "Expected Destructuring or Identifier but got {:?}",
+            "Expected Identifier for function argument but got {:?}",
             arg.id.unwrap()
         ))
     };
@@ -395,11 +392,11 @@ fn type_definition_repr(ast: &AST<Rules>) -> Result<(String, TypeDefinition), St
         ));
     }
 
-    let type_name = type_repr(&ast.children[1]);
-    if type_name.is_err() {
-        return Err(type_name.unwrap_err());
+    let _type = type_repr(&ast.children[1]);
+    if _type.is_err() {
+        return Err(_type.unwrap_err());
     }
-    let type_name = type_name.unwrap();
+    let _type = _type.unwrap();
 
     let mut variants = HashMap::new();
     for child in &ast.children[3].children {
@@ -414,17 +411,11 @@ fn type_definition_repr(ast: &AST<Rules>) -> Result<(String, TypeDefinition), St
     }
 
     let definition = TypeDefinition {
-        def: type_name.clone(),
+        def: _type.clone(),
         variants: variants,
     };
 
-    let name = match type_name {
-        Type::SimpleType(name) => name,
-        Type::TypeParameter(name) => name,
-        Type::ParametrizedType(name, _) => name,
-    };
-
-    Ok((name, definition))
+    Ok((_type.name().clone(), definition))
 }
 
 pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {

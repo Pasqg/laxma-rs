@@ -1,6 +1,6 @@
 use crate::parser::combinators::{
     and_match, at_least_n, at_least_one, exclude, many, optional, or_match, or_match_flat,
-    parser_ref, regex, slit, Combinators, MatchRegex,
+    parser_ref, slit, Combinators, MatchRegex,
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -74,7 +74,7 @@ pub fn parser() -> Combinators<Rules> {
     let argument: Combinators<Rules> = and_match(
         Rules::Argument,
         vec![
-            or_match_flat(vec![/*destructuring.clone(), */ identifier()]),
+            identifier(),
             slit(":"),
             type_name.clone(),
         ],

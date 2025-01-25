@@ -3,28 +3,15 @@ use std::collections::{HashMap, HashSet};
 use grammar::Rules;
 use internal_repr::{
     to_repr, DestructuringComponent, Expression, FunctionArgument, FunctionCall,
-    FunctionDefinition, Type, TypeDefinition, TypeVariant,
+    FunctionDefinition, Program, Type, TypeDefinition, TypeVariant,
 };
+use type_system::{infer_function_type, TypeInfo};
 
 use crate::parser::ast::AST;
 
 mod grammar;
 mod internal_repr;
-
-fn compile_argument(argument: &FunctionArgument) -> Result<(String, String), String> {
-    match &argument.component {
-        DestructuringComponent::Identifier(name) => {
-            Ok((name.clone(), compile_type(&argument.typing)))
-        }
-        /*DestructuringComponent::Destructuring(destructuring) => {
-            Ok(format!("destructuring: {}", compile_type(&argument.typing)))
-        }*/
-        _ => Err(format!(
-            "Unsupported destructuring of function argument: {:?}",
-            argument.component
-        )),
-    }
-}
+mod type_system;
 
 fn compile_function_call(function_call: &FunctionCall) -> String {
     format!(
@@ -61,32 +48,23 @@ fn compile_expression(expression: &Expression) -> String {
 
 fn compile_function(
     definition: &FunctionDefinition,
-    types: &HashMap<String, TypeDefinition>,
-    primitive_types: &HashSet<String>,
+    program: &Program,
+    type_info: &TypeInfo,
 ) -> Result<String, String> {
     let function_name = &definition.name;
     let mut type_parameters = HashSet::new();
     let mut args = Vec::new();
+    let mut arg_types = HashMap::new();
     for argument in &definition.arguments {
-        //todo: separate validation?
-        let arg_type = argument.typing.name();
-        if !primitive_types.contains(arg_type) && !types.contains_key(arg_type) {
-            return Err(format!("'{}' is not a valid type", arg_type));
-        }
-
-        let arg_type = types.get(arg_type);
+        let arg_type = program.types.get(argument.typing.name());
         if arg_type.is_some() {
             for parameter in arg_type.unwrap().def.type_parameters() {
                 type_parameters.insert(parameter);
             }
         }
 
-        let result = compile_argument(&argument);
-        if result.is_err() {
-            return Err(result.unwrap_err());
-        }
-
-        args.push(result.unwrap());
+        args.push(argument.identifier.clone());
+        arg_types.insert(argument.identifier.clone(), compile_type(&argument.typing));
     }
 
     let body;
@@ -103,7 +81,7 @@ fn compile_function(
             let arg_type = definition.arguments[0].typing.name();
             match pattern {
                 DestructuringComponent::Identifier(variant) => {
-                    let type_definition = types.get(arg_type);
+                    let type_definition = program.types.get(arg_type);
                     let constant = if type_definition.is_some() {
                         if !type_definition.unwrap().variants.contains_key(variant) {
                             return Err(format!(
@@ -121,7 +99,7 @@ fn compile_function(
                 }
                 DestructuringComponent::None => panic!("Unsupported"),
                 DestructuringComponent::Destructuring(destructuring) => {
-                    let constant = if types.contains_key(arg_type) {
+                    let constant = if program.types.contains_key(arg_type) {
                         format!("{arg_type}::{}", destructuring.0)
                     } else {
                         destructuring.0.clone()
@@ -151,28 +129,27 @@ fn compile_function(
             }
         }
         body = format!(
-            "
-    match ({}) {{
+            "match ({}) {{
 {}
         _ => panic!(\"Non-exhaustive pattern matching in function {}\"),
-    }}
-        ",
-            args.iter()
-                .map(|(arg, _)| arg.clone())
-                .collect::<Vec<String>>()
-                .join(","),
+    }}",
+            args.join(", "),
             patterns.join("\n"),
             function_name
         );
     }
 
+    let return_type = infer_function_type(program, &type_info, definition);
+    if return_type.is_err() {
+        return Err(return_type.unwrap_err());
+    }
+
     Ok(format!(
         "
-fn {function_name}{}({}) {{
+fn {function_name}{}({}) -> {} {{
     {body}
 }}
-    
-    ",
+        ",
         if type_parameters.is_empty() {
             String::new()
         } else {
@@ -186,9 +163,10 @@ fn {function_name}{}({}) {{
             )
         },
         args.iter()
-            .map(|(arg, _type)| format!("{}: {}", arg, _type))
+            .map(|arg| format!("{}: {}", arg, arg_types.get(arg).unwrap()))
             .collect::<Vec<String>>()
-            .join(","),
+            .join(", "),
+        compile_type(&return_type.unwrap())
     ))
 }
 
@@ -204,6 +182,7 @@ fn compile_type(_type: &Type) -> String {
                 .join(", ")
         ),
         Type::TypeParameter(name) => name[1..].to_string(),
+        Type::Unknown => panic!("Unknown is not a valid type"),
     }
 }
 
@@ -250,7 +229,7 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
     let program = result.unwrap();
     println!("{:?}", program);
 
-    let mut code = "type Int = i64;\n".to_owned();
+    let mut code = "type Int = i64;\ntype Bool = bool;\n".to_owned();
 
     for (_, definition) in &program.types {
         let result = compile_type_definition(definition);
@@ -260,10 +239,27 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
         code.push_str(&result.unwrap());
     }
 
-    let primitive_types =
-        HashSet::from(["Int".to_string(), "String".to_string(), "Bool".to_string()]);
+    let bool_type = Type::SimpleType("Bool".to_string());
+    let mut user_types = HashMap::new();
+    for (type_name, type_definition) in &program.types {
+        user_types.insert(type_name.clone(), type_definition.def.to_owned());
+    }
+    let type_info = TypeInfo {
+        primitive_types: HashSet::from([
+            "Int".to_string(),
+            "String".to_string(),
+            "Bool".to_string(),
+        ]),
+        user_types,
+        function_types: HashMap::new(),
+        constant_types: HashMap::from([
+            ("true".to_string(), bool_type.clone()),
+            ("false".to_string(), bool_type.clone()),
+        ]),
+    };
+
     for (_, definition) in &program.functions {
-        let result = compile_function(definition, &program.types, &primitive_types);
+        let result = compile_function(definition, &program, &type_info);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
@@ -301,7 +297,17 @@ mod test {
 
         fn is_empty lst : List [ 'T ] =
             Empty -> true
-            NonEmpty x -> false
+            NonEmpty _ _ -> false
+
+        fn append x : 'T lst : List [ 'T ] ->
+            List :: NonEmpty ( x lst )
+
+        fn length lst : List [ 'T ] -> length_tail ( lst 0 )
+
+        fn length_tail lst : List [ 'T ] acc : Int =
+            NonEmpty _ rest -> length_tail ( rest + ( acc 1 ) )
+            Empty -> acc
+
 
         "
         .split_whitespace()
