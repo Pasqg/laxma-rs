@@ -5,6 +5,8 @@ use recur::{tail_recur, TailRecurResult};
 
 mod list;
 mod recur;
+mod parser;
+mod compiler;
 
 fn fibonacci_tco_helper(acc: LinkedList<i32>, n: u32) -> LinkedList<i32> {
     tail_recur((acc, n), |(acc, n)| {

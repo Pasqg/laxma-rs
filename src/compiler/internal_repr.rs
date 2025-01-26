@@ -1,7 +1,7 @@
 use core::panic;
 use std::collections::{HashMap, HashSet};
 
-use crate::parser::ast::AST;
+use crate::parser::{ast::AST, token_stream::Token};
 
 use super::grammar::Rules;
 
@@ -58,7 +58,6 @@ pub(super) enum DestructuringComponent {
     Identifier(String),
     Destructuring(Destructuring),
     Number(i64),
-    None,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
@@ -85,10 +84,15 @@ pub(super) struct FunctionArgument {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
+pub(super) struct Pattern {
+    pub(super) components: Vec<DestructuringComponent>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionDefinition {
     pub(super) name: String,
     pub(super) arguments: Vec<FunctionArgument>,
-    pub(super) bodies: Vec<(DestructuringComponent, Expression)>,
+    pub(super) bodies: Vec<(Pattern, Expression)>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -274,43 +278,47 @@ fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
     }
 }
 
-fn pattern_matching_repr(
-    ast: &AST<Rules>,
-) -> Result<Vec<(DestructuringComponent, Expression)>, String> {
+fn pattern_matching_repr(ast: &AST<Rules>) -> Result<Vec<(Pattern, Expression)>, String> {
     let mut bodies = Vec::new();
     for pattern in &ast.children {
         if pattern.id != Some(Rules::Pattern) {
             return Err(format!("Expected Pattern but got {}", pattern));
         }
 
-        let destructuring = match pattern.children[0].id {
-            Some(Rules::Identifier) => {
-                DestructuringComponent::Identifier(pattern.matched[0].unwrap_str())
+        let mut components = Vec::new();
+        for component in &pattern.children[0].children {
+            if component.matched[0] != Token::str(",") {
+                let destructuring = match component.id {
+                    Some(Rules::Identifier) => {
+                        DestructuringComponent::Identifier(component.matched[0].unwrap_str())
+                    }
+                    Some(Rules::Destructuring) => {
+                        let result = destructuring_repr(&component);
+                        if result.is_err() {
+                            return Err(result.unwrap_err());
+                        }
+                        DestructuringComponent::Destructuring(result.unwrap())
+                    }
+                    Some(Rules::Number) => DestructuringComponent::Number(
+                        component.matched[0].unwrap_str().parse().unwrap(),
+                    ),
+                    _ => {
+                        return Err(format!(
+                            "Expected Identifier, Destructuring or Number but got {}",
+                            component
+                        ));
+                    }
+                };
+                components.push(destructuring);
             }
-            Some(Rules::Destructuring) => {
-                let result = destructuring_repr(&pattern.children[0]);
-                if result.is_err() {
-                    return Err(result.unwrap_err());
-                }
-                DestructuringComponent::Destructuring(result.unwrap())
-            }
-            Some(Rules::Number) => {
-                DestructuringComponent::Number(pattern.matched[0].unwrap_str().parse().unwrap())
-            }
-            _ => {
-                return Err(format!(
-                    "Expected Identifier or Destructuring but got {}",
-                    pattern.children[0]
-                ));
-            }
-        };
+        }
 
         let result = expression_repr(&pattern.children[1].children[1]);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
 
-        bodies.push((destructuring, result.unwrap()));
+        bodies.push((Pattern { components }, result.unwrap()));
     }
     return Ok(bodies);
 }
@@ -340,7 +348,12 @@ fn function_repr(ast: &AST<Rules>) -> Result<(String, FunctionDefinition), Strin
         if result.is_err() {
             return Err(result.unwrap_err());
         }
-        bodies.push((DestructuringComponent::None, result.unwrap()));
+        bodies.push((
+            Pattern {
+                components: Vec::new(),
+            },
+            result.unwrap(),
+        ));
     } else if rule == Rules::PatternMatching {
         let result = pattern_matching_repr(&body.children[1]);
         if result.is_err() {

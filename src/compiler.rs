@@ -69,7 +69,7 @@ fn compile_function(
 
     let body;
     let is_simple_body =
-        definition.bodies.len() == 1 && definition.bodies[0].0 == DestructuringComponent::None;
+        definition.bodies.len() == 1 && definition.bodies[0].0.components.is_empty();
     if definition.bodies.is_empty() || is_simple_body {
         let (_, expression) = &definition.bodies[0];
         body = compile_expression(expression);
@@ -77,56 +77,64 @@ fn compile_function(
         let mut patterns = Vec::new();
         for (pattern, expression) in &definition.bodies {
             let expr = compile_expression(expression);
-            //todo: for multiple destructurings use incremental arg ids
-            let arg_type = definition.arguments[0].typing.name();
-            match pattern {
-                DestructuringComponent::Identifier(variant) => {
-                    let type_definition = program.types.get(arg_type);
-                    let constant = if type_definition.is_some() {
-                        if !type_definition.unwrap().variants.contains_key(variant) {
-                            return Err(format!(
-                                "Variant {variant} doesn't exist for type {arg_type}"
-                            ));
-                        }
-                        format!("{arg_type}::{variant}")
-                    } else {
-                        variant.clone()
-                    };
-                    patterns.push(format!("        {constant}() => {expr},"))
-                }
-                DestructuringComponent::Number(n) => {
-                    patterns.push(format!("        {n} => {expr},"))
-                }
-                DestructuringComponent::None => panic!("Unsupported"),
-                DestructuringComponent::Destructuring(destructuring) => {
-                    let constant = if program.types.contains_key(arg_type) {
-                        format!("{arg_type}::{}", destructuring.0)
-                    } else {
-                        destructuring.0.clone()
-                    };
 
-                    let mut components = Vec::new();
-                    for component in &destructuring.1 {
-                        match component {
-                            DestructuringComponent::Identifier(x) => components.push(x.clone()),
-                            _ => {
-                                return Err(
+            let mut arg_id = 0;
+            let mut pattern_components = Vec::new();
+            for pattern_component in &pattern.components {
+                let arg_type = definition.arguments[arg_id].typing.name();
+                match pattern_component {
+                    DestructuringComponent::Identifier(variant) => {
+                        let type_definition = program.types.get(arg_type);
+                        let constant = if type_definition.is_some() {
+                            if !type_definition.unwrap().variants.contains_key(variant) {
+                                return Err(format!(
+                                    "Variant {variant} doesn't exist for type {arg_type}"
+                                ));
+                            }
+                            format!("{arg_type}::{variant}")
+                        } else {
+                            variant.clone()
+                        };
+
+                        pattern_components.push(format!(
+                            "{constant}{}",
+                            if constant != "_" { "()" } else { "" }
+                        ));
+                    }
+                    DestructuringComponent::Number(n) => pattern_components.push(format!("{n}")),
+                    DestructuringComponent::Destructuring(destructuring) => {
+                        let constant = if program.types.contains_key(arg_type) {
+                            format!("{arg_type}::{}", destructuring.0)
+                        } else {
+                            destructuring.0.clone()
+                        };
+
+                        let mut components = Vec::new();
+                        for component in &destructuring.1 {
+                            match component {
+                                DestructuringComponent::Identifier(x) => components.push(x.clone()),
+                                _ => return Err(
                                     "Only DestructuringComponent::Identifier is supported for now"
                                         .to_owned(),
-                                )
+                                ),
                             }
                         }
+                        pattern_components.push(format!(
+                            "{constant}({})",
+                            components
+                                .iter()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<&str>>()
+                                .join(", "),
+                        ));
                     }
-                    patterns.push(format!(
-                        "        {constant}({}) => {expr},",
-                        components
-                            .iter()
-                            .map(|s| s.as_str())
-                            .collect::<Vec<&str>>()
-                            .join(", "),
-                    ));
-                }
+                };
+                arg_id += 1;
             }
+            patterns.push(format!(
+                "        ({}) => {expr},",
+                pattern_components.join(", ")
+            ));
         }
         body = format!(
             "match ({}) {{
@@ -305,8 +313,8 @@ mod test {
         fn length lst : List [ 'T ] -> length_tail ( lst 0 )
 
         fn length_tail lst : List [ 'T ] acc : Int =
-            NonEmpty _ rest -> length_tail ( rest + ( acc 1 ) )
-            Empty -> acc
+            NonEmpty _ rest , _ -> length_tail ( rest + ( acc 1 ) )
+            Empty , _ -> acc
 
 
         "

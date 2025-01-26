@@ -51,7 +51,7 @@ pub fn parser() -> Combinators<Rules> {
     let destructuring: Combinators<Rules> = at_least_n(
         Some(Rules::Destructuring),
         identifier(),
-        Some(optional(slit(","))),
+        Some(optional(slit("."))),
         2,
     );
 
@@ -136,7 +136,7 @@ pub fn parser() -> Combinators<Rules> {
                 and_match(
                     Rules::Pattern,
                     vec![
-                        or_match_flat(vec![destructuring.clone(), identifier(), number()]),
+                        at_least_one(None, or_match_flat(vec![destructuring.clone(), identifier(), number()]), Some(slit(","))),
                         function_body(),
                     ],
                 ),
