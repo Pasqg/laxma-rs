@@ -64,7 +64,7 @@ fn compile_function(
         }
 
         args.push(argument.identifier.clone());
-        arg_types.insert(argument.identifier.clone(), compile_type(&argument.typing));
+        arg_types.insert(argument.identifier.clone(), argument.typing.clone());
     }
 
     let body;
@@ -141,7 +141,23 @@ fn compile_function(
 {}
         _ => panic!(\"Non-exhaustive pattern matching in function {}\"),
     }}",
-            args.join(", "),
+            args.iter()
+                .map(|arg| {
+                    //todo: share with format type
+                    match arg_types.get(arg).unwrap() {
+                        Type::SimpleType(name) =>
+                            if !type_info.primitive_types.contains(name) { 
+                                format!("*{}", arg)
+                            } else {
+                                arg.clone()
+                            },
+                        Type::TypeParameter(_) => arg.clone(),
+                        Type::ParametrizedType(_, _) => format!("*{arg}"),
+                        Type::Unknown => panic!("Arg type is unknown"),
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join(", "),
             patterns.join("\n"),
             function_name
         );
@@ -171,7 +187,7 @@ fn {function_name}{}({}) -> {} {{
             )
         },
         args.iter()
-            .map(|arg| format!("{}: {}", arg, arg_types.get(arg).unwrap()))
+            .map(|arg| format!("{}: {}", arg, format_type(arg_types.get(arg).unwrap(), &type_info.primitive_types)))
             .collect::<Vec<String>>()
             .join(", "),
         compile_type(&return_type.unwrap())
@@ -194,7 +210,21 @@ fn compile_type(_type: &Type) -> String {
     }
 }
 
-fn compile_type_definition(definition: &TypeDefinition) -> Result<String, String> {
+fn format_type(_type: &Type, primitive_types: &HashSet<String>) -> String {
+    match _type {
+        Type::SimpleType(name) =>
+            if !primitive_types.contains(name) { 
+                format!("Box<{}>", compile_type(_type))
+            } else {
+                compile_type(_type)
+            },
+        Type::TypeParameter(_) => compile_type(_type),
+        Type::ParametrizedType(_, _) => format!("Box<{}>", compile_type(_type)),
+        Type::Unknown => panic!("Unsupported Uknown type"),
+    }
+}
+
+fn compile_type_definition(definition: &TypeDefinition, primitive_types: &HashSet<String>) -> Result<String, String> {
     let type_name = match &definition.def {
         Type::SimpleType(name) => name,
         Type::ParametrizedType(_, _) => &compile_type(&definition.def),
@@ -209,7 +239,7 @@ fn compile_type_definition(definition: &TypeDefinition) -> Result<String, String
                 "    {}({}),",
                 name,
                 vec.iter()
-                    .map(|t| format!("Box<{}>", compile_type(t)))
+                    .map(|t| format_type(t, primitive_types))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
@@ -233,14 +263,19 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
         return Err(result.unwrap_err());
     }
 
-    //todo: add primitives
     let program = result.unwrap();
     println!("{:?}", program);
 
-    let mut code = "type Int = i64;\ntype Bool = bool;\n".to_owned();
+    let primitive_types = HashSet::from([
+        "Int".to_string(),
+        "String".to_string(),
+        "Bool".to_string(),
+        "Void".to_string(),
+    ]);
+    let mut code = "type Int = i64;\ntype Bool = bool;\ntype Void = ();".to_owned();
 
     for (_, definition) in &program.types {
-        let result = compile_type_definition(definition);
+        let result = compile_type_definition(definition, &primitive_types);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
@@ -253,11 +288,7 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
         user_types.insert(type_name.clone(), type_definition.def.to_owned());
     }
     let type_info = TypeInfo {
-        primitive_types: HashSet::from([
-            "Int".to_string(),
-            "String".to_string(),
-            "Bool".to_string(),
-        ]),
+        primitive_types,
         user_types,
         function_types: HashMap::new(),
         constant_types: HashMap::from([
