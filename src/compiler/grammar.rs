@@ -117,7 +117,7 @@ pub fn parser() -> Combinators<Rules> {
     );
     expression.bind(expression_body);
 
-    let function_signature = and_match(
+    let function_signature = || and_match(
         Rules::FunctionSignature,
         vec![
             slit("fn"),
@@ -127,7 +127,7 @@ pub fn parser() -> Combinators<Rules> {
     );
     let function_body = || and_match(Rules::FunctionBody, vec![slit("->"), expression.clone()]);
 
-    let function_pattern_matching: Combinators<Rules> = and_match(
+    let function_pattern_matching = || and_match(
         Rules::PatternMatching,
         vec![
             slit("="),
@@ -148,8 +148,8 @@ pub fn parser() -> Combinators<Rules> {
     let function_def: Combinators<Rules> = and_match(
         Rules::FunctionDef,
         vec![
-            function_signature.clone(),
-            or_match_flat(vec![function_pattern_matching.clone(), function_body()]),
+            function_signature(),
+            or_match_flat(vec![function_pattern_matching(), function_body()]),
         ],
     );
 

@@ -201,15 +201,16 @@ fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), S
 
     if ast.children.len() > 2 {
         let node = &ast.children[2];
-        match node.id.unwrap() {
-            Rules::Argument => {
+        match node.id {
+            None => {}
+            Some(Rules::Argument) => {
                 let result = argument_repr(ast);
                 if result.is_err() {
                     return Err(result.unwrap_err());
                 }
                 arguments.push(result.unwrap());
             }
-            Rules::Arguments => {
+            Some(Rules::Arguments) => {
                 for child in &node.children {
                     let result = argument_repr(child);
                     if result.is_err() {
@@ -218,7 +219,7 @@ fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), S
                     arguments.push(result.unwrap());
                 }
             }
-            _ => panic!("Expected Arguments or Argument but got {:?}", node.id),
+            _ => panic!("Expected None, Argument or Arguments but got {:?}", node.id),
         }
     }
 

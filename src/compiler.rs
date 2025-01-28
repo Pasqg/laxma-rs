@@ -14,16 +14,27 @@ mod internal_repr;
 mod type_system;
 
 fn compile_function_call(function_call: &FunctionCall) -> String {
-    format!(
-        "{}({})",
-        function_call.name,
-        function_call
-            .parameters
-            .iter()
-            .map(|expr| compile_expression(expr))
-            .collect::<Vec<String>>()
-            .join(", ")
-    )
+    let formatted_parameters = function_call
+        .parameters
+        .iter()
+        .map(|expr| compile_expression(expr))
+        .collect::<Vec<String>>();
+    match function_call.name.as_str() {
+        "+" | "-" | "/" | "*" => format!(
+            "({})",
+            formatted_parameters.join(&format!(") {} (", function_call.name))
+        ),
+        "print" => format!(
+            "println!(\"{}\", {})",
+            formatted_parameters.iter().map(|_| "{:?}".to_string()).collect::<Vec<String>>().join(" "),
+            formatted_parameters.join(",")
+        ),
+        _ => format!(
+            "{}({})",
+            function_call.name,
+            formatted_parameters.join(", ")
+        ),
+    }
 }
 
 fn compile_expression(expression: &Expression) -> String {
@@ -170,7 +181,7 @@ fn compile_function(
 
     Ok(format!(
         "
-fn {function_name}{}({}) -> {} {{
+pub fn {function_name}{}({}) -> {} {{
     {body}
 }}
         ",
@@ -248,6 +259,7 @@ fn compile_type_definition(definition: &TypeDefinition, primitive_types: &HashSe
 
     Ok(format!(
         "
+#[derive(Debug)]
 pub enum {} {{
 {}
 }}
@@ -272,7 +284,7 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
         "Bool".to_string(),
         "Void".to_string(),
     ]);
-    let mut code = "type Int = i64;\ntype Bool = bool;\ntype Void = ();".to_owned();
+    let mut code = "type Int = i64;\ntype Bool = bool;\ntype Void = ();\n".to_owned();
 
     for (_, definition) in &program.types {
         let result = compile_type_definition(definition, &primitive_types);
@@ -283,6 +295,8 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
     }
 
     let bool_type = Type::SimpleType("Bool".to_string());
+    let void_type = Type::SimpleType("Void".to_string());
+
     let mut user_types = HashMap::new();
     for (type_name, type_definition) in &program.types {
         user_types.insert(type_name.clone(), type_definition.def.to_owned());
@@ -290,7 +304,9 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
     let type_info = TypeInfo {
         primitive_types,
         user_types,
-        function_types: HashMap::new(),
+        function_types: HashMap::from([
+            ("print".to_string(), void_type.clone())
+        ]),
         constant_types: HashMap::from([
             ("true".to_string(), bool_type.clone()),
             ("false".to_string(), bool_type.clone()),
@@ -347,6 +363,7 @@ mod test {
             NonEmpty _ rest , _ -> length_tail ( rest + ( acc 1 ) )
             Empty , _ -> acc
 
+        fn main -> print ( List :: Empty ( ) )
 
         "
         .split_whitespace()
