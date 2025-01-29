@@ -143,7 +143,7 @@ pub fn infer_function_type(
                 .unwrap()
                 .clone()),
             _ => Err(format!(
-                "Function {function_name} has branches with different types: {:?}",
+                "Function '{function_name}' has matched patterns with different types: {:?}",
                 branch_types
             )),
         }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use grammar::Rules;
 use internal_repr::{
-    to_repr, DestructuringComponent, Expression, FunctionArgument, FunctionCall,
+    to_repr, DestructuringComponent, Expression, FunctionCall,
     FunctionDefinition, Program, Type, TypeDefinition, TypeVariant,
 };
 use type_system::{infer_function_type, TypeInfo};
@@ -12,6 +12,7 @@ use crate::parser::ast::AST;
 mod grammar;
 mod internal_repr;
 mod type_system;
+pub mod repl;
 
 fn compile_function_call(function_call: &FunctionCall) -> String {
     let formatted_parameters = function_call
@@ -26,7 +27,11 @@ fn compile_function_call(function_call: &FunctionCall) -> String {
         ),
         "print" => format!(
             "println!(\"{}\", {})",
-            formatted_parameters.iter().map(|_| "{:?}".to_string()).collect::<Vec<String>>().join(" "),
+            formatted_parameters
+                .iter()
+                .map(|_| "{:?}".to_string())
+                .collect::<Vec<String>>()
+                .join(" "),
             formatted_parameters.join(",")
         ),
         _ => format!(
@@ -67,16 +72,19 @@ fn compile_function(
     let mut args = Vec::new();
     let mut arg_types = HashMap::new();
     for argument in &definition.arguments {
-        let arg_type = program.types.get(argument.typing.name());
-        if arg_type.is_some() {
-            for parameter in arg_type.unwrap().def.type_parameters() {
-                type_parameters.insert(parameter);
-            }
+        for parameter in argument.typing.type_parameters() {
+            type_parameters.insert(parameter);
         }
 
         args.push(argument.identifier.clone());
         arg_types.insert(argument.identifier.clone(), argument.typing.clone());
     }
+
+    let return_type = infer_function_type(program, &type_info, definition);
+    if return_type.is_err() {
+        return Err(return_type.unwrap_err());
+    }
+    let return_type = return_type.unwrap();
 
     let body;
     let is_simple_body =
@@ -156,12 +164,13 @@ fn compile_function(
                 .map(|arg| {
                     //todo: share with format type
                     match arg_types.get(arg).unwrap() {
-                        Type::SimpleType(name) =>
-                            if !type_info.primitive_types.contains(name) { 
+                        Type::SimpleType(name) => {
+                            if !type_info.primitive_types.contains(name) {
                                 format!("*{}", arg)
                             } else {
                                 arg.clone()
-                            },
+                            }
+                        }
                         Type::TypeParameter(_) => arg.clone(),
                         Type::ParametrizedType(_, _) => format!("*{arg}"),
                         Type::Unknown => panic!("Arg type is unknown"),
@@ -172,11 +181,6 @@ fn compile_function(
             patterns.join("\n"),
             function_name
         );
-    }
-
-    let return_type = infer_function_type(program, &type_info, definition);
-    if return_type.is_err() {
-        return Err(return_type.unwrap_err());
     }
 
     Ok(format!(
@@ -198,10 +202,14 @@ pub fn {function_name}{}({}) -> {} {{
             )
         },
         args.iter()
-            .map(|arg| format!("{}: {}", arg, format_type(arg_types.get(arg).unwrap(), &type_info.primitive_types)))
+            .map(|arg| format!(
+                "{}: {}",
+                arg,
+                format_type(arg_types.get(arg).unwrap(), &type_info.primitive_types)
+            ))
             .collect::<Vec<String>>()
             .join(", "),
-        compile_type(&return_type.unwrap())
+        compile_type(&return_type)
     ))
 }
 
@@ -223,19 +231,23 @@ fn compile_type(_type: &Type) -> String {
 
 fn format_type(_type: &Type, primitive_types: &HashSet<String>) -> String {
     match _type {
-        Type::SimpleType(name) =>
-            if !primitive_types.contains(name) { 
+        Type::SimpleType(name) => {
+            if !primitive_types.contains(name) {
                 format!("Box<{}>", compile_type(_type))
             } else {
                 compile_type(_type)
-            },
+            }
+        }
         Type::TypeParameter(_) => compile_type(_type),
         Type::ParametrizedType(_, _) => format!("Box<{}>", compile_type(_type)),
         Type::Unknown => panic!("Unsupported Uknown type"),
     }
 }
 
-fn compile_type_definition(definition: &TypeDefinition, primitive_types: &HashSet<String>) -> Result<String, String> {
+fn compile_type_definition(
+    definition: &TypeDefinition,
+    primitive_types: &HashSet<String>,
+) -> Result<String, String> {
     let type_name = match &definition.def {
         Type::SimpleType(name) => name,
         Type::ParametrizedType(_, _) => &compile_type(&definition.def),
@@ -304,9 +316,7 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
     let type_info = TypeInfo {
         primitive_types,
         user_types,
-        function_types: HashMap::from([
-            ("print".to_string(), void_type.clone())
-        ]),
+        function_types: HashMap::from([("print".to_string(), void_type.clone())]),
         constant_types: HashMap::from([
             ("true".to_string(), bool_type.clone()),
             ("false".to_string(), bool_type.clone()),
@@ -356,6 +366,9 @@ mod test {
 
         fn append x : 'T lst : List [ 'T ] ->
             List :: NonEmpty ( x lst )
+
+        fn list_of x : 'T ->
+            append ( x List :: Empty ( ) )
 
         fn length lst : List [ 'T ] -> length_tail ( lst 0 )
 
