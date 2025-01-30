@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use grammar::Rules;
 use internal_repr::{
-    to_repr, DestructuringComponent, Expression, FunctionCall,
-    FunctionDefinition, Program, Type, TypeDefinition, TypeVariant,
+    to_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Program, Type,
+    TypeDefinition, TypeVariant,
 };
 use type_system::{infer_function_type, TypeInfo};
 
@@ -11,8 +11,8 @@ use crate::parser::ast::AST;
 
 mod grammar;
 mod internal_repr;
-mod type_system;
 pub mod repl;
+mod type_system;
 
 fn compile_function_call(function_call: &FunctionCall) -> String {
     let formatted_parameters = function_call
@@ -290,38 +290,20 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
     let program = result.unwrap();
     println!("{:?}", program);
 
-    let primitive_types = HashSet::from([
-        "Int".to_string(),
-        "String".to_string(),
-        "Bool".to_string(),
-        "Void".to_string(),
-    ]);
-    let mut code = "type Int = i64;\ntype Bool = bool;\ntype Void = ();\n".to_owned();
+    let mut type_info = TypeInfo::new();
+    program
+        .types
+        .iter()
+        .for_each(|(name, def)| type_info.add_user_type(name, def));
 
+    let mut code = "type Int = i64;\ntype Bool = bool;\ntype Void = ();\n".to_owned();
     for (_, definition) in &program.types {
-        let result = compile_type_definition(definition, &primitive_types);
+        let result = compile_type_definition(definition, &type_info.primitive_types);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
         code.push_str(&result.unwrap());
     }
-
-    let bool_type = Type::SimpleType("Bool".to_string());
-    let void_type = Type::SimpleType("Void".to_string());
-
-    let mut user_types = HashMap::new();
-    for (type_name, type_definition) in &program.types {
-        user_types.insert(type_name.clone(), type_definition.def.to_owned());
-    }
-    let type_info = TypeInfo {
-        primitive_types,
-        user_types,
-        function_types: HashMap::from([("print".to_string(), void_type.clone())]),
-        constant_types: HashMap::from([
-            ("true".to_string(), bool_type.clone()),
-            ("false".to_string(), bool_type.clone()),
-        ]),
-    };
 
     for (_, definition) in &program.functions {
         let result = compile_function(definition, &program, &type_info);

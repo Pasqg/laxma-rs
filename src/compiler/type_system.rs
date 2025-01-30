@@ -1,12 +1,38 @@
 use std::collections::{HashMap, HashSet};
 
-use super::internal_repr::{Expression, FunctionDefinition, Program, Type};
+use super::{internal_repr::{Expression, FunctionDefinition, Program, Type}, TypeDefinition};
 
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<String>,
     pub(super) user_types: HashMap<String, Type>,
     pub(super) function_types: HashMap<String, Type>,
     pub(super) constant_types: HashMap<String, Type>,
+}
+
+impl TypeInfo {
+    pub fn new() -> Self {
+        let primitive_types = HashSet::from([
+            "Int".to_string(),
+            "String".to_string(),
+            "Bool".to_string(),
+            "Void".to_string(),
+        ]);
+        let bool_type = Type::SimpleType("Bool".to_string());
+        let void_type = Type::SimpleType("Void".to_string());
+        Self {
+            primitive_types,
+            user_types: HashMap::new(),
+            function_types: HashMap::from([("print".to_string(), void_type.clone())]),
+            constant_types: HashMap::from([
+                ("true".to_string(), bool_type.clone()),
+                ("false".to_string(), bool_type.clone()),
+            ]),
+        }
+    }
+
+    pub fn add_user_type(&mut self, type_name: &String, type_definition: &TypeDefinition) {
+        self.user_types.insert(type_name.clone(), type_definition.def.to_owned());
+    }
 }
 
 fn infer_expression_type(
@@ -64,8 +90,6 @@ fn infer_expression_type(
     }
 }
 
-//todo: String is probably not the best for a type return
-//todo: Perhaps even primitive types should be SimpleTypes?
 pub fn infer_function_type(
     program: &Program,
     type_info: &TypeInfo,
@@ -142,6 +166,7 @@ pub fn infer_function_type(
                 .next()
                 .unwrap()
                 .clone()),
+            //todo: for N types, as long as none is Unknown, we need to check what's the supertype of all of them (common ancestor in hierarchy tree)
             _ => Err(format!(
                 "Function '{function_name}' has matched patterns with different types: {:?}",
                 branch_types
