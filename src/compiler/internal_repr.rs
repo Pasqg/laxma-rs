@@ -476,7 +476,7 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::{
-        compiler::{grammar::parser, internal_repr::to_repr},
+        compiler::{grammar::program_parser, internal_repr::to_repr},
         parser::combinators::ParserCombinator,
         parser::token_stream::TokenStream,
     };
@@ -491,7 +491,7 @@ mod tests {
         .split_whitespace()
         .collect();
         let tokens = TokenStream::from_str(code);
-        let result = parser().parse(&tokens);
+        let result = program_parser().parse(&tokens);
 
         assert!(result.result);
         print!("{}", result.ast);
@@ -524,7 +524,7 @@ mod tests {
         .split_whitespace()
         .collect();
         let tokens = TokenStream::from_str(code);
-        let result = parser().parse(&tokens);
+        let result = program_parser().parse(&tokens);
 
         let no_exclusion = HashSet::new();
         println!("{}", result.ast.prune(&no_exclusion, &no_exclusion));

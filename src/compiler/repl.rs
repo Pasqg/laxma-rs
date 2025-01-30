@@ -31,7 +31,7 @@ pub fn start_repl() {
 
         let tokens: Vec<&str> = input.split_whitespace().collect();
         let tokens = TokenStream::from_str(tokens);
-        let result = grammar::parser().parse(&tokens);
+        let result = grammar::program_parser().parse(&tokens);
 
         if !result.result || result.remaining.not_done() {
             println!("ERROR: Failed to parse!");

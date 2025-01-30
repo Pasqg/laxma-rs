@@ -331,7 +331,7 @@ mod test {
 
     use crate::compiler::compile;
     use crate::parser::combinators::ParserCombinator;
-    use crate::{compiler::grammar::parser, parser::token_stream::TokenStream};
+    use crate::{compiler::grammar::program_parser, parser::token_stream::TokenStream};
 
     #[test]
     fn compile_test() {
@@ -364,7 +364,7 @@ mod test {
         .split_whitespace()
         .collect();
         let tokens = TokenStream::from_str(code);
-        let result = parser().parse(&tokens);
+        let result = program_parser().parse(&tokens);
 
         assert!(result.result);
         print!("{}", result.ast);
