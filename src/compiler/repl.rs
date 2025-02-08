@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::io::Write;
 
 use crate::compiler::internal_repr::to_repr;
@@ -15,6 +16,25 @@ pub enum Value {
     Num(i64),
     Bool(bool),
     Void,
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Typed(name, variant, values) => write!(
+                f,
+                "{name}::{variant}({})",
+                values
+                    .iter()
+                    .map(|val| format!("{val}"))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Value::Num(n) => write!(f, "{n}"),
+            Value::Bool(b) => write!(f, "{b}"),
+            Value::Void => write!(f, "Void"),
+        }
+    }
 }
 
 fn value_to_str(value: &Value) -> Result<String, String> {
@@ -90,11 +110,14 @@ fn pattern_match(
 
                         match (pattern, value) {
                             (DestructuringComponent::Identifier(i), _) if i.as_str() == "_" => {}
-                            (DestructuringComponent::Identifier(identifier), Value::Typed(name, variant, values)) => {
+                            (
+                                DestructuringComponent::Identifier(identifier),
+                                Value::Typed(name, variant, values),
+                            ) => {
                                 if identifier.as_str() != variant.as_str() {
                                     return Ok(false);
                                 }
-            
+
                                 if !values.is_empty() {
                                     return Err(format!("Cannot destructure variant '{variant}' of type '{name}' with zero elements, because constructor requires {} arguments", values.len()));
                                 }
@@ -184,14 +207,16 @@ fn evaluate_expression(
                                     if type_name.as_str() != "Int" {
                                         return Err(format!("Expected '{type_name}' in parameter {i} for {name}::{variant} but got 'Int'"));
                                     }
-                                },
+                                }
                                 (Value::Bool(_), Type::SimpleType(type_name)) => {
                                     if type_name.as_str() != "Bool" {
                                         return Err(format!("Expected '{type_name}' in parameter {i} for {name}::{variant} but got 'Bool'"));
                                     }
-                                },
+                                }
                                 _ => {
-                                    return Err(format!("Mismatching type in constructor for {name}::{variant}"));
+                                    return Err(format!(
+                                        "Mismatching type in constructor for {name}::{variant}"
+                                    ));
                                 }
                             }
                         }
@@ -452,7 +477,11 @@ pub fn start_repl() {
                     &type_info,
                     &result.unwrap(),
                 );
-                println!("{:?}", result);
+                if result.is_ok() {
+                    println!("{}", result.unwrap());
+                } else {
+                    println!("ERROR: {}", result.unwrap_err());
+                }
             } else {
                 println!("ERROR(s): {} {}", original_error, result.unwrap_err());
             }
