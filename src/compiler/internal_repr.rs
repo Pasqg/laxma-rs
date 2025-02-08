@@ -226,7 +226,7 @@ fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), S
     Ok((function_name, arguments))
 }
 
-fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
+pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::Expression {
         return Err(format!("Expected Expression but got {}", ast));
     }

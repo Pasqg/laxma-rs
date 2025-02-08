@@ -42,7 +42,7 @@ fn compile_function_call(function_call: &FunctionCall) -> String {
     }
 }
 
-fn compile_expression(expression: &Expression) -> String {
+pub fn compile_expression(expression: &Expression) -> String {
     match expression {
         Expression::FunctionCall(function_call) => compile_function_call(function_call),
         Expression::TypeConstructor(type_name, constant, expressions) => {

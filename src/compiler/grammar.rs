@@ -95,7 +95,7 @@ fn function_signature() -> Combinators<Rules> {
     )
 }
 
-fn expression_parser() -> Combinators<Rules> {
+pub fn expression_parser() -> Combinators<Rules> {
     let expression = parser_ref();
     let function_call = || {
         and_match(
