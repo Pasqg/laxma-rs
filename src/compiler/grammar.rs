@@ -46,6 +46,14 @@ fn number() -> Combinators<Rules> {
     Combinators::MatchRegex(MatchRegex::new(Some(Rules::Number), r"[0-9]+"))
 }
 
+fn basic_type_name() -> Combinators<Rules> {
+    or_match_flat(vec![type_parameter(), identifier()])
+}
+
+fn type_parameter() -> Combinators<Rules> {
+    Combinators::MatchRegex(MatchRegex::new(Some(Rules::TypeParameter), r"'[a-zA-Z]+"))
+}
+
 fn destructuring() -> Combinators<Rules> {
     at_least_n(
         Some(Rules::Destructuring),
@@ -55,83 +63,25 @@ fn destructuring() -> Combinators<Rules> {
     )
 }
 
-fn basic_type_name() -> Combinators<Rules> {
-    or_match_flat(vec![type_parameter(), identifier()])
-}
-
-fn type_parameter() -> Combinators<Rules> {
-    Combinators::MatchRegex(MatchRegex::new(
-        Some(Rules::TypeParameter),
-        r"'[a-zA-Z]+",
-    ))
-}
-
-fn parametrized_type() -> Combinators<Rules> {
-    and_match(
-        Rules::ParametrizedType,
-        vec![
-            identifier(),
-            slit("["),
-            at_least_one(Some(Rules::Elements), type_name(), Some(slit(","))),
-            slit("]"),
-        ],
-    )
-}
-
 fn type_name() -> Combinators<Rules> {
-    or_match_flat(vec![parametrized_type(), basic_type_name()])
-}
-
-fn function_call() -> Combinators<Rules> {
-    and_match(
-        Rules::FunctionCall,
-        vec![
-            identifier(),
-            slit("("),
-            many(
-                Some(Rules::Arguments),
-                expression(),
-                Some(optional(slit(","))),
-            ),
-            slit(")"),
-        ],
-    )
-}
-
-fn type_constructor() -> Combinators<Rules> {
-    and_match(
-        Rules::TypeConstructor,
-        vec![
-            identifier(),
-            slit("::"),
-            identifier(),
-            slit("("),
-            many(
-                Some(Rules::Elements),
-                expression(),
-                Some(optional(slit(","))),
-            ),
-            slit(")"),
-        ],
-    )
-}
-
-fn expression() -> Combinators<Rules> {
-    or_match(
-        Rules::Expression,
-        vec![function_call(), type_constructor(), identifier(), number()],
-    )
+    let type_name = parser_ref();
+    let parametrized_type = || {
+        and_match(
+            Rules::ParametrizedType,
+            vec![
+                identifier(),
+                slit("["),
+                at_least_one(Some(Rules::Elements), type_name.clone(), Some(slit(","))),
+                slit("]"),
+            ],
+        )
+    };
+    type_name.bind(or_match_flat(vec![parametrized_type(), basic_type_name()]));
+    type_name
 }
 
 fn argument() -> Combinators<Rules> {
-    and_match(
-        Rules::Argument,
-        vec![
-            identifier(),
-            slit(":"),
-            type_name(),
-        ],
-    )
+    and_match(Rules::Argument, vec![identifier(), slit(":"), type_name()])
 }
 
 fn function_signature() -> Combinators<Rules> {
@@ -145,8 +95,52 @@ fn function_signature() -> Combinators<Rules> {
     )
 }
 
+fn expression_parser() -> Combinators<Rules> {
+    let expression = parser_ref();
+    let function_call = || {
+        and_match(
+            Rules::FunctionCall,
+            vec![
+                identifier(),
+                slit("("),
+                many(
+                    Some(Rules::Arguments),
+                    expression.clone(),
+                    Some(optional(slit(","))),
+                ),
+                slit(")"),
+            ],
+        )
+    };
+
+    let type_constructor = || {
+        and_match(
+            Rules::TypeConstructor,
+            vec![
+                identifier(),
+                slit("::"),
+                identifier(),
+                slit("("),
+                many(
+                    Some(Rules::Elements),
+                    expression.clone(),
+                    Some(optional(slit(","))),
+                ),
+                slit(")"),
+            ],
+        )
+    };
+
+    let expression_body = or_match(
+        Rules::Expression,
+        vec![function_call(), type_constructor(), identifier(), number()],
+    );
+    expression.bind(expression_body);
+    expression
+}
+
 fn function_body() -> Combinators<Rules> {
-    and_match(Rules::FunctionBody, vec![slit("->"), expression()])
+    and_match(Rules::FunctionBody, vec![slit("->"), expression_parser()])
 }
 
 fn function_pattern_matching() -> Combinators<Rules> {
@@ -159,7 +153,11 @@ fn function_pattern_matching() -> Combinators<Rules> {
                 and_match(
                     Rules::Pattern,
                     vec![
-                        at_least_one(None, or_match_flat(vec![destructuring(), identifier(), number()]), Some(slit(","))),
+                        at_least_one(
+                            None,
+                            or_match_flat(vec![destructuring(), identifier(), number()]),
+                            Some(slit(",")),
+                        ),
                         function_body(),
                     ],
                 ),
@@ -190,10 +188,7 @@ fn type_def() -> Combinators<Rules> {
                 None,
                 and_match(
                     Rules::TypeDef,
-                    vec![
-                        identifier(),
-                        many(Some(Rules::Elements), type_name(), None),
-                    ],
+                    vec![identifier(), many(Some(Rules::Elements), type_name(), None)],
                 ),
                 Some(slit("|")),
             ),
