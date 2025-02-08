@@ -19,10 +19,17 @@ impl TypeInfo {
         ]);
         let bool_type = Type::SimpleType("Bool".to_string());
         let void_type = Type::SimpleType("Void".to_string());
+        let int_type = Type::SimpleType("Int".to_string());
         Self {
             primitive_types,
             user_types: HashMap::new(),
-            function_types: HashMap::from([("print".to_string(), void_type.clone())]),
+            function_types: HashMap::from([
+                ("print".to_string(), void_type.clone()),
+                ("+".to_string(), int_type.clone()),
+                ("-".to_string(), int_type.clone()),
+                ("*".to_string(), int_type.clone()),
+                ("/".to_string(), int_type.clone()),
+                ]),
             constant_types: HashMap::from([
                 ("true".to_string(), bool_type.clone()),
                 ("false".to_string(), bool_type.clone()),
@@ -68,11 +75,16 @@ fn infer_expression_type(
                 Ok(Type::Unknown)
             } else {
                 let function_definition = program.functions.get(&function_call.name);
-                if function_definition.is_none() {
-                    Err(format!("Function '{}' was not defined", function_call.name))
-                } else {
-                    infer_function_type(program, type_info, function_definition.unwrap())
+                if function_definition.is_some() {
+                    return infer_function_type(program, type_info, function_definition.unwrap());
                 }
+
+                let builtin = type_info.function_types.get(&function_call.name);
+                if builtin.is_some() {
+                    return Ok(builtin.unwrap().to_owned());
+                }
+                
+                Err(format!("Function '{}' was not defined", function_call.name))
             }
         }
         Expression::Identifier(var) => {
