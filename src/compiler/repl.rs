@@ -113,7 +113,6 @@ impl REPL {
         }
 
         let ast = result.ast;
-        println!("{}\n\n", ast);
         let result = to_repr(&ast);
         if result.is_ok() {
             let Program { functions, types } = result.unwrap();
@@ -139,7 +138,6 @@ impl REPL {
             let original_error = result.unwrap_err();
             let result = expression_repr(&ast);
             if result.is_ok() {
-                println!("{:?}", result);
                 let result = self.evaluate_expression(
                     &HashMap::from([
                         ("true".to_string(), Value::Bool(true)),

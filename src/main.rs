@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{Read, Write};
 
 use compiler::repl::REPL;
 
@@ -18,10 +18,31 @@ fn main() {
             .expect("Invalid input!");
 
         let input = input.trim();
-        if input == "quit" || input == "exit" {
+        if input == "/quit" || input == "/exit" {
             return;
         }
+        if !input.starts_with("/load ") {
+            repl.handle_input(input);
+            continue;
+        }
 
-        repl.handle_input(input);
+        let files = input.split(&[' ', '\t', '\n']);
+        for file_name in files.skip(1) {
+            let file_name = file_name.trim();
+            if !file_name.is_empty() {
+                let file = std::fs::File::open(file_name);
+                if file.is_err() {
+                    println!("ERROR for '{}': {}", file_name, file.unwrap_err());
+                } else {
+                    let mut content = String::new();
+                    let result = file.unwrap().read_to_string(&mut content);
+                    if result.is_err() {
+                        println!("ERROR for '{}': {}", file_name, result.unwrap_err());
+                    } else {
+                        repl.handle_input(&content);
+                    }
+                }
+            }
+        }
     }
 }
