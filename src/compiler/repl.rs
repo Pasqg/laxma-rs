@@ -56,11 +56,33 @@ fn value_to_str(value: &Value) -> Result<String, String> {
     }
 }
 
+#[derive(Clone, Debug)]
+struct PatternMatchResult {
+    is_match: bool,
+    bindings: HashMap<String, Value>,
+}
+
+impl PatternMatchResult {
+    fn no_match() -> Self {
+        Self {
+            is_match: false,
+            bindings: HashMap::new(),
+        }
+    }
+
+    fn with_match(bindings: HashMap<String, Value>) -> Self {
+        Self {
+            is_match: true,
+            bindings,
+        }
+    }
+}
+
 fn pattern_match(
     function_name: &str,
     pattern: &Pattern,
     args: &Vec<Value>,
-) -> Result<bool, String> {
+) -> Result<PatternMatchResult, String> {
     if pattern.components.len() != args.len() {
         return Err(format!(
             "Found pattern with {} elements but function '{function_name}' has {} arguments",
@@ -69,6 +91,7 @@ fn pattern_match(
         ));
     }
 
+    let mut bindings = HashMap::new();
     for i in 0..pattern.components.len() {
         let element = &pattern.components[i];
         let arg = &args[i];
@@ -77,19 +100,24 @@ fn pattern_match(
             DestructuringComponent::Identifier(identifier) => match arg {
                 Value::Typed(name, variant, values) => {
                     if identifier.as_str() != variant.as_str() {
-                        return Ok(false);
+                        return Ok(PatternMatchResult::no_match());
                     }
 
                     if !values.is_empty() {
                         return Err(format!("Cannot destructure variant '{variant}' of type '{name}' with zero elements, because constructor requires {} arguments", values.len()));
                     }
                 }
-                // identifier can always match Int, but should be bound to the identifier
-                Value::Num(_) => {}
+                //todo: think about whether to allow this. Might be nicer to force use of "_" instead of re-binding
+                Value::Num(_) => {
+                    //todo: multiple "_" should also be considered wildcard
+                    if identifier.as_str() != "_" {
+                        bindings.insert(identifier.to_owned(), arg.clone());
+                    }
+                }
                 Value::Bool(bool_val) => {
                     let bool_id = identifier.as_str();
                     if (bool_id == "true" && !bool_val) || (bool_id == "false" && *bool_val) {
-                        return Ok(false);
+                        return Ok(PatternMatchResult::no_match());
                     }
                 }
                 Value::Void => return Err(format!("Arg is Void")),
@@ -97,7 +125,7 @@ fn pattern_match(
             DestructuringComponent::Destructuring(destructuring) => match arg {
                 Value::Typed(name, variant, values) => {
                     if variant.as_str() != destructuring.0.as_str() {
-                        return Ok(false);
+                        return Ok(PatternMatchResult::no_match());
                     }
 
                     if values.len() != destructuring.1.len() {
@@ -115,7 +143,7 @@ fn pattern_match(
                                 Value::Typed(name, variant, values),
                             ) => {
                                 if identifier.as_str() != variant.as_str() {
-                                    return Ok(false);
+                                    return Ok(PatternMatchResult::no_match());
                                 }
 
                                 if !values.is_empty() {
@@ -124,14 +152,17 @@ fn pattern_match(
                             }
                             (DestructuringComponent::Number(x), Value::Num(y)) => {
                                 if x != y {
-                                    return Ok(false);
+                                    return Ok(PatternMatchResult::no_match());
                                 }
                             }
-                            (DestructuringComponent::Identifier(_), Value::Num(_)) => {}
+                            (DestructuringComponent::Identifier(i), Value::Num(_)) => {
+                                bindings.insert(i.to_owned(), value.clone());
+                            }
                             (DestructuringComponent::Identifier(x), Value::Bool(y)) => {
                                 if (x.as_str() == "true" && !y) || (x.as_str() == "false" && *y) {
-                                    return Ok(false);
+                                    return Ok(PatternMatchResult::no_match());
                                 }
+                                bindings.insert(x.to_owned(), value.clone());
                             }
                             _ => return Err("Unsupported".to_string()),
                         }
@@ -143,11 +174,11 @@ fn pattern_match(
             },
             DestructuringComponent::Number(pattern_val) => match arg {
                 Value::Typed(name, _, _) => {
-                    return Err(format!("Type '{name}' cannot be matched to Int"))
+                    return Err(format!("Type '{name}' cannot be matched to Int"));
                 }
                 Value::Num(arg_val) => {
                     if pattern_val != arg_val {
-                        return Ok(false);
+                        return Ok(PatternMatchResult::no_match());
                     }
                 }
                 Value::Bool(_) => return Err(format!("Bool cannot be matched to Int")),
@@ -155,7 +186,7 @@ fn pattern_match(
             },
         }
     }
-    return Ok(true);
+    return Ok(PatternMatchResult::with_match(bindings));
 }
 
 fn evaluate_expression(
@@ -381,8 +412,13 @@ fn evaluate_expression(
                     if result.is_err() {
                         return Err(result.unwrap_err());
                     }
-                    if result.unwrap() {
-                        return evaluate_expression(&arg_values, program, type_info, expression);
+                    let result = result.unwrap();
+                    if result.is_match {
+                        let mut bindings = result.bindings;
+                        for (k,v) in &arg_values {
+                            bindings.insert(k.clone(), v.clone());
+                        }
+                        return evaluate_expression(&bindings, program, type_info, expression);
                     }
                 }
 

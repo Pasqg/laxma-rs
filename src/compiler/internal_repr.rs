@@ -47,6 +47,15 @@ pub(super) enum TypeVariant {
     Cartesian(String, Vec<Type>),
 }
 
+impl TypeVariant {
+    pub(super) fn name(&self) -> &String {
+        match self {
+            TypeVariant::Constant(name) => name,
+            TypeVariant::Cartesian(name, _) => name,
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct TypeDefinition {
     pub(super) def: Type,
