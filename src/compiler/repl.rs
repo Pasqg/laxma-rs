@@ -367,7 +367,7 @@ fn evaluate_expression(
                     ordered_arg_values.push(value);
                 }
 
-                if definition.bodies.len() == 1 {
+                if definition.is_not_pattern_matched() {
                     return evaluate_expression(
                         &arg_values,
                         program,

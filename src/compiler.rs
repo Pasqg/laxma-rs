@@ -87,9 +87,7 @@ fn compile_function(
     let return_type = return_type.unwrap();
 
     let body;
-    let is_simple_body =
-        definition.bodies.len() == 1 && definition.bodies[0].0.components.is_empty();
-    if definition.bodies.is_empty() || is_simple_body {
+    if definition.is_not_pattern_matched() {
         let (_, expression) = &definition.bodies[0];
         body = compile_expression(expression);
     } else {

@@ -95,6 +95,12 @@ pub(super) struct FunctionDefinition {
     pub(super) bodies: Vec<(Pattern, Expression)>,
 }
 
+impl FunctionDefinition {
+    pub(super) fn is_not_pattern_matched(&self) -> bool {
+        self.bodies.len() == 1 && self.bodies[0].0.components.is_empty()
+    } 
+}
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct Program {
     pub(super) functions: HashMap<String, FunctionDefinition>,
