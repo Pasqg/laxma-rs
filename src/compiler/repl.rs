@@ -11,7 +11,7 @@ use super::internal_repr::{expression_repr, Pattern};
 use super::{DestructuringComponent, Expression, Program, Type, TypeInfo, TypeVariant};
 
 #[derive(Clone, Debug)]
-pub enum Value {
+enum Value {
     Typed(String, String, Vec<Value>),
     Num(i64),
     Bool(bool),
@@ -37,22 +37,24 @@ impl Display for Value {
     }
 }
 
-fn value_to_str(value: &Value) -> Result<String, String> {
-    match value {
-        Value::Typed(name, variant, values) => {
-            let mut args = Vec::new();
-            for value in values {
-                let result = value_to_str(value);
-                if result.is_err() {
-                    return result;
+impl Value {
+    fn value_to_str(&self) -> Result<String, String> {
+        match self {
+            Value::Typed(name, variant, values) => {
+                let mut args = Vec::new();
+                for value in values {
+                    let result = value.value_to_str();
+                    if result.is_err() {
+                        return result;
+                    }
+                    args.push(result.unwrap());
                 }
-                args.push(result.unwrap());
+                Ok(format!("{name}::{variant}({})", args.join(", ")))
             }
-            Ok(format!("{name}::{variant}({})", args.join(", ")))
+            Value::Num(x) => Ok(format!("{x}")),
+            Value::Bool(x) => Ok(format!("{x}")),
+            Value::Void => Err("Void".to_string()),
         }
-        Value::Num(x) => Ok(format!("{x}")),
-        Value::Bool(x) => Ok(format!("{x}")),
-        Value::Void => Err("Void".to_string()),
     }
 }
 
@@ -309,7 +311,7 @@ fn evaluate_expression(
                     if result.is_err() {
                         return result;
                     }
-                    match value_to_str(&result.unwrap()) {
+                    match result.unwrap().value_to_str() {
                         Ok(val) => values.push(val),
                         Err(err) => return Err(format!("Cannot print argument {i}: {err}")),
                     }
@@ -415,7 +417,7 @@ fn evaluate_expression(
                     let result = result.unwrap();
                     if result.is_match {
                         let mut bindings = result.bindings;
-                        for (k,v) in &arg_values {
+                        for (k, v) in &arg_values {
                             bindings.insert(k.clone(), v.clone());
                         }
                         return evaluate_expression(&bindings, program, type_info, expression);
