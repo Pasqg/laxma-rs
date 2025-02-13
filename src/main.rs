@@ -1,10 +1,32 @@
 use std::io::{Read, Write};
+use std::fs::{metadata, read_dir};
 
 use compiler::repl::REPL;
 
 mod compiler;
 mod parser;
 mod recur;
+
+fn load_file(repl: &mut REPL, file_name: &str) {
+    let file = std::fs::File::open(file_name);
+    if file.is_err() {
+        println!("ERROR for '{}': {}", file_name, file.unwrap_err());
+    } else {
+        if metadata(file_name).unwrap().is_dir() {
+            for path in read_dir(file_name).unwrap() {
+                load_file(repl, path.unwrap().path().to_str().unwrap());
+            }
+        } else {
+            let mut content = String::new();
+            let result = file.unwrap().read_to_string(&mut content);
+            if result.is_err() {
+                println!("ERROR for '{}': {}", file_name, result.unwrap_err());
+            } else {
+                repl.handle_input(&content);
+            }
+        }
+    }
+}
 
 fn main() {
     let mut repl = REPL::new();
@@ -30,18 +52,7 @@ fn main() {
         for file_name in files.skip(1) {
             let file_name = file_name.trim();
             if !file_name.is_empty() {
-                let file = std::fs::File::open(file_name);
-                if file.is_err() {
-                    println!("ERROR for '{}': {}", file_name, file.unwrap_err());
-                } else {
-                    let mut content = String::new();
-                    let result = file.unwrap().read_to_string(&mut content);
-                    if result.is_err() {
-                        println!("ERROR for '{}': {}", file_name, result.unwrap_err());
-                    } else {
-                        repl.handle_input(&content);
-                    }
-                }
+                load_file(&mut repl, file_name);
             }
         }
     }
