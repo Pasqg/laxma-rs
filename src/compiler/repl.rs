@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
+use std::rc::Rc;
 
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::infer_function_type;
@@ -11,7 +12,7 @@ use super::{DestructuringComponent, Expression, Program, Type, TypeInfo, TypeVar
 
 #[derive(Clone, Debug)]
 enum Value {
-    Typed(String, String, Vec<Value>),
+    Typed(String, String, Vec<Rc<Value>>),
     Num(i64),
     Bool(bool),
     Void,
@@ -60,7 +61,7 @@ impl Value {
 #[derive(Clone, Debug)]
 struct PatternMatchResult {
     is_match: bool,
-    bindings: HashMap<String, Value>,
+    bindings: HashMap<String, Rc<Value>>,
 }
 
 impl PatternMatchResult {
@@ -71,7 +72,7 @@ impl PatternMatchResult {
         }
     }
 
-    fn with_match(bindings: HashMap<String, Value>) -> Self {
+    fn with_match(bindings: HashMap<String, Rc<Value>>) -> Self {
         Self {
             is_match: true,
             bindings,
@@ -139,8 +140,8 @@ impl REPL {
             if result.is_ok() {
                 let result = self.evaluate_expression(
                     &HashMap::from([
-                        ("true".to_string(), Value::Bool(true)),
-                        ("false".to_string(), Value::Bool(false)),
+                        ("true".to_string(), Rc::new(Value::Bool(true))),
+                        ("false".to_string(), Rc::new(Value::Bool(false))),
                     ]),
                     &result.unwrap(),
                 );
@@ -158,7 +159,7 @@ impl REPL {
     fn pattern_match(
         function_name: &str,
         pattern: &Pattern,
-        args: &Vec<Value>,
+        args: &Vec<Rc<Value>>,
     ) -> Result<PatternMatchResult, String> {
         if pattern.components.len() != args.len() {
             return Err(format!(
@@ -174,7 +175,7 @@ impl REPL {
             let arg = &args[i];
             match element {
                 // Should also add binding of identifier to value!
-                DestructuringComponent::Identifier(identifier) => match arg {
+                DestructuringComponent::Identifier(identifier) => match arg.as_ref() {
                     Value::Typed(name, variant, values) => {
                         if identifier.as_str() != variant.as_str() {
                             return Ok(PatternMatchResult::no_match());
@@ -198,7 +199,7 @@ impl REPL {
                     }
                     Value::Void => return Err(format!("Arg is Void")),
                 },
-                DestructuringComponent::Destructuring(destructuring) => match arg {
+                DestructuringComponent::Destructuring(destructuring) => match arg.as_ref() {
                     Value::Typed(name, variant, values) => {
                         if variant.as_str() != destructuring.0.as_str() {
                             return Ok(PatternMatchResult::no_match());
@@ -212,7 +213,7 @@ impl REPL {
                             let value = &values[i];
                             let pattern = &destructuring.1[i];
 
-                            match (pattern, value) {
+                            match (pattern, value.as_ref()) {
                                 (DestructuringComponent::Identifier(i), _) if i.as_str() == "_" => {
                                 }
                                 (DestructuringComponent::Identifier(i), Value::Typed(_, _, _)) => {
@@ -241,7 +242,7 @@ impl REPL {
                     Value::Bool(_) => return Err(format!("Cannot destructure Bool")),
                     Value::Void => return Err(format!("Arg is Void")),
                 },
-                DestructuringComponent::Number(pattern_val) => match arg {
+                DestructuringComponent::Number(pattern_val) => match arg.as_ref() {
                     Value::Typed(name, _, _) => {
                         return Err(format!("Type '{name}' cannot be matched to Int"));
                     }
@@ -260,9 +261,9 @@ impl REPL {
 
     fn evaluate_expression(
         &self,
-        identifier_values: &HashMap<String, Value>,
+        identifier_values: &HashMap<String, Rc<Value>>,
         expression: &Expression,
-    ) -> Result<Value, String> {
+    ) -> Result<Rc<Value>, String> {
         match expression {
             Expression::TypeConstructor(name, variant, expressions) => {
                 if !self.type_info.user_types.contains_key(name) {
@@ -296,7 +297,7 @@ impl REPL {
                     match type_variant {
                         TypeVariant::Cartesian(variant, items) => {
                             for i in 0..values.len() {
-                                match (&values[i], &items[i]) {
+                                match (values[i].as_ref(), &items[i]) {
                                     (Value::Typed(provided, _, _), Type::SimpleType(expected)) => {
                                         if expected.as_str() != provided.as_str() {
                                             return Err(format!("Expected '{expected}' in parameter {i} for {name}::{variant} but got '{provided}'"));
@@ -323,7 +324,7 @@ impl REPL {
                         _ => panic!("not possible"),
                     };
                 }
-                Ok(Value::Typed(name.clone(), variant.clone(), values))
+                Ok(Rc::new(Value::Typed(name.clone(), variant.clone(), values)))
             }
             Expression::FunctionCall(function_call) => match function_call.name.as_str() {
                 "+" | "-" | "/" | "*" => {
@@ -342,8 +343,8 @@ impl REPL {
                         if result.is_err() {
                             return result;
                         }
-                        match result.unwrap() {
-                            Value::Num(x) => values.push(x),
+                        match result.unwrap().as_ref() {
+                            Value::Num(x) => values.push(*x),
                             _ => {
                                 return Err(format!(
                                     "Argument {i} of function '{}' is not numeric",
@@ -354,18 +355,18 @@ impl REPL {
                         i += 1;
                     }
                     match function_call.name.as_str() {
-                        "+" => Ok(Value::Num(
+                        "+" => Ok(Rc::new(Value::Num(
                             values.into_iter().reduce(|acc, x| acc + x).unwrap(),
-                        )),
-                        "-" => Ok(Value::Num(
+                        ))),
+                        "-" => Ok(Rc::new(Value::Num(
                             values.into_iter().reduce(|acc, x| acc - x).unwrap(),
-                        )),
-                        "*" => Ok(Value::Num(
+                        ))),
+                        "*" => Ok(Rc::new(Value::Num(
                             values.into_iter().reduce(|acc, x| acc * x).unwrap(),
-                        )),
-                        "/" => Ok(Value::Num(
+                        ))),
+                        "/" => Ok(Rc::new(Value::Num(
                             values.into_iter().reduce(|acc, x| acc / x).unwrap(),
-                        )),
+                        ))),
                         _ => panic!("Unhandled case"),
                     }
                 }
@@ -384,7 +385,7 @@ impl REPL {
                         i += 1;
                     }
                     println!("{}", values.join(" "));
-                    Ok(Value::Void)
+                    Ok(Rc::new(Value::Void))
                 }
                 _ => {
                     if !self.program.functions.contains_key(&function_call.name) {
@@ -416,7 +417,7 @@ impl REPL {
                         let value = result.unwrap();
                         let arg_name = &definition.arguments[i].identifier;
                         let arg_type = &definition.arguments[i].typing;
-                        match &value {
+                        match value.as_ref() {
                             Value::Typed(name, variant, values) => {
                                 match arg_type {
                                     Type::SimpleType(simple_type) => {
@@ -499,7 +500,7 @@ impl REPL {
                     identifier, identifier_values
                 )),
             },
-            Expression::Number(x) => Ok(Value::Num(*x)),
+            Expression::Number(x) => Ok(Rc::new(Value::Num(*x))),
         }
     }
 }
