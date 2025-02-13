@@ -32,6 +32,9 @@ impl TypeInfo {
                 (Rc::new("-".to_string()), int_type.clone()),
                 (Rc::new("*".to_string()), int_type.clone()),
                 (Rc::new("/".to_string()), int_type.clone()),
+                (Rc::new(">".to_string()), bool_type.clone()),
+                (Rc::new("==".to_string()), bool_type.clone()),
+                (Rc::new("<".to_string()), bool_type.clone()),
             ]),
             constant_types: HashMap::from([
                 (Rc::new("true".to_string()), bool_type.clone()),

@@ -367,7 +367,47 @@ impl REPL {
                         "/" => Ok(Rc::new(Value::Num(
                             values.into_iter().reduce(|acc, x| acc / x).unwrap(),
                         ))),
-                        _ => panic!("Unhandled case"),
+                        _ => panic!("Unhandled arithmetic function {}", function_call.name),
+                    }
+                }
+                ">" | "<" | "==" => {
+                    if function_call.parameters.len() != 2 {
+                        return Err(format!(
+                            "Function '{}' requires 2 parameters but got '{}'",
+                            function_call.name,
+                            function_call.parameters.len()
+                        ));
+                    }
+
+                    let result =
+                        self.evaluate_expression(identifier_values, &function_call.parameters[0]);
+                    if result.is_err() {
+                        return result;
+                    }
+                    let left = result.unwrap();
+
+                    let result =
+                        self.evaluate_expression(identifier_values, &function_call.parameters[1]);
+                    if result.is_err() {
+                        return result;
+                    }
+                    let right = result.unwrap();
+
+                    let (left, right) = match (left.as_ref(), right.as_ref()) {
+                        (Value::Num(x), Value::Num(y)) => (*x, *y),
+                        (_, _) => {
+                            return Err(format!(
+                                "Arguments of '{}' are not numeric",
+                                function_call.name
+                            ))
+                        }
+                    };
+
+                    match function_call.name.as_str() {
+                        ">" => Ok(Rc::new(Value::Bool(left > right))),
+                        "<" => Ok(Rc::new(Value::Bool(left < right))),
+                        "==" => Ok(Rc::new(Value::Bool(left == right))),
+                        _ => panic!("Unhandled boolean function {}", function_call.name),
                     }
                 }
                 "print" => {
@@ -492,7 +532,7 @@ impl REPL {
                         function_call.name
                     ))
                 }
-            }
+            },
             Expression::WithBlock(items, expression) => {
                 let mut bindings = identifier_values.clone();
                 for (identifier, expr) in items {
@@ -511,22 +551,23 @@ impl REPL {
                 }
 
                 match condition.unwrap().as_ref() {
-                    Value::Bool(condition) =>
+                    Value::Bool(condition) => {
                         if *condition {
                             self.evaluate_expression(identifier_values, true_branch)
                         } else {
                             self.evaluate_expression(identifier_values, false_branch)
-                        },
-                    _ => return Err(format!("Bug! If condition should be Bool"))
+                        }
+                    }
+                    _ => return Err(format!("Bug! If condition should be Bool")),
                 }
             }
-             Expression::Identifier(identifier) => match identifier_values.get(identifier) {
+            Expression::Identifier(identifier) => match identifier_values.get(identifier) {
                 Some(value) => Ok(value.clone()),
                 None => Err(format!(
                     "Unknown identifier '{}'  | {:?}",
                     identifier, identifier_values
                 )),
-            }
+            },
             Expression::Number(x) => Ok(Rc::new(Value::Num(*x))),
         }
     }
