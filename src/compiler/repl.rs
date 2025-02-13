@@ -61,7 +61,7 @@ impl Value {
 #[derive(Clone, Debug)]
 struct PatternMatchResult {
     is_match: bool,
-    bindings: HashMap<String, Rc<Value>>,
+    bindings: HashMap<Rc<String>, Rc<Value>>,
 }
 
 impl PatternMatchResult {
@@ -72,7 +72,7 @@ impl PatternMatchResult {
         }
     }
 
-    fn with_match(bindings: HashMap<String, Rc<Value>>) -> Self {
+    fn with_match(bindings: HashMap<Rc<String>, Rc<Value>>) -> Self {
         Self {
             is_match: true,
             bindings,
@@ -119,7 +119,7 @@ impl REPL {
             for (name, definition) in types {
                 println!("Defined type {}", name);
 
-                self.type_info.add_user_type(&name, &definition);
+                self.type_info.add_user_type(name.clone(), &definition);
                 self.program.types.insert(name, definition);
             }
             for (name, definition) in functions {
@@ -140,8 +140,8 @@ impl REPL {
             if result.is_ok() {
                 let result = self.evaluate_expression(
                     &HashMap::from([
-                        ("true".to_string(), Rc::new(Value::Bool(true))),
-                        ("false".to_string(), Rc::new(Value::Bool(false))),
+                        (Rc::new("true".to_string()), Rc::new(Value::Bool(true))),
+                        (Rc::new("false".to_string()), Rc::new(Value::Bool(false))),
                     ]),
                     &result.unwrap(),
                 );
@@ -217,7 +217,7 @@ impl REPL {
                                 (DestructuringComponent::Identifier(i), _) if i.as_str() == "_" => {
                                 }
                                 (DestructuringComponent::Identifier(i), Value::Typed(_, _, _)) => {
-                                    bindings.insert(i.to_owned(), value.clone());
+                                    bindings.insert(i.clone(), value.clone());
                                 }
                                 (DestructuringComponent::Number(x), Value::Num(y)) => {
                                     if x != y {
@@ -225,14 +225,14 @@ impl REPL {
                                     }
                                 }
                                 (DestructuringComponent::Identifier(i), Value::Num(_)) => {
-                                    bindings.insert(i.to_owned(), value.clone());
+                                    bindings.insert(i.clone(), value.clone());
                                 }
                                 (DestructuringComponent::Identifier(x), Value::Bool(y)) => {
                                     if (x.as_str() == "true" && !y) || (x.as_str() == "false" && *y)
                                     {
                                         return Ok(PatternMatchResult::no_match());
                                     }
-                                    bindings.insert(x.to_owned(), value.clone());
+                                    bindings.insert(x.clone(), value.clone());
                                 }
                                 _ => return Err("Unsupported".to_string()),
                             }
@@ -261,7 +261,7 @@ impl REPL {
 
     fn evaluate_expression(
         &self,
-        identifier_values: &HashMap<String, Rc<Value>>,
+        identifier_values: &HashMap<Rc<String>, Rc<Value>>,
         expression: &Expression,
     ) -> Result<Rc<Value>, String> {
         match expression {

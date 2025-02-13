@@ -103,14 +103,14 @@ fn compile_function(
                     DestructuringComponent::Identifier(variant) => {
                         let type_definition = program.types.get(arg_type);
                         let constant = if type_definition.is_some() {
-                            if !type_definition.unwrap().variants.contains_key(variant) {
+                            if !type_definition.unwrap().variants.contains_key(variant.as_ref()) {
                                 return Err(format!(
                                     "Variant {variant} doesn't exist for type {arg_type}"
                                 ));
                             }
                             format!("{arg_type}::{variant}")
                         } else {
-                            variant.clone()
+                            variant.to_string()
                         };
 
                         pattern_components.push(format!(
@@ -166,10 +166,10 @@ fn compile_function(
                             if !type_info.primitive_types.contains(name) {
                                 format!("*{}", arg)
                             } else {
-                                arg.clone()
+                                arg.to_string()
                             }
                         }
-                        Type::TypeParameter(_) => arg.clone(),
+                        Type::TypeParameter(_) => arg.to_string(),
                         Type::ParametrizedType(_, _) => format!("*{arg}"),
                         Type::Unknown => panic!("Arg type is unknown"),
                     }
@@ -292,7 +292,7 @@ pub fn compile(ast: &AST<Rules>) -> Result<String, String> {
     program
         .types
         .iter()
-        .for_each(|(name, def)| type_info.add_user_type(name, def));
+        .for_each(|(name, def)| type_info.add_user_type(name.clone(), def));
 
     let mut code = "type Int = i64;\ntype Bool = bool;\ntype Void = ();\n".to_owned();
     for (_, definition) in &program.types {

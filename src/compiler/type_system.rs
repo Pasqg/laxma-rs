@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 use super::{
     internal_repr::{Expression, FunctionDefinition, Program, Type},
@@ -7,9 +7,9 @@ use super::{
 
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<String>,
-    pub(super) user_types: HashMap<String, Type>,
-    pub(super) function_types: HashMap<String, Type>,
-    pub(super) constant_types: HashMap<String, Type>,
+    pub(super) user_types: HashMap<Rc<String>, Type>,
+    pub(super) function_types: HashMap<Rc<String>, Type>,
+    pub(super) constant_types: HashMap<Rc<String>, Type>,
 }
 
 impl TypeInfo {
@@ -27,29 +27,29 @@ impl TypeInfo {
             primitive_types,
             user_types: HashMap::new(),
             function_types: HashMap::from([
-                ("print".to_string(), void_type.clone()),
-                ("+".to_string(), int_type.clone()),
-                ("-".to_string(), int_type.clone()),
-                ("*".to_string(), int_type.clone()),
-                ("/".to_string(), int_type.clone()),
+                (Rc::new("print".to_string()), void_type.clone()),
+                (Rc::new("+".to_string()), int_type.clone()),
+                (Rc::new("-".to_string()), int_type.clone()),
+                (Rc::new("*".to_string()), int_type.clone()),
+                (Rc::new("/".to_string()), int_type.clone()),
             ]),
             constant_types: HashMap::from([
-                ("true".to_string(), bool_type.clone()),
-                ("false".to_string(), bool_type.clone()),
+                (Rc::new("true".to_string()), bool_type.clone()),
+                (Rc::new("false".to_string()), bool_type.clone()),
             ]),
         }
     }
 
-    pub fn add_user_type(&mut self, type_name: &String, type_definition: &TypeDefinition) {
+    pub fn add_user_type(&mut self, type_name: Rc<String>, type_definition: &TypeDefinition) {
         self.user_types
-            .insert(type_name.clone(), type_definition.def.to_owned());
+            .insert(type_name, type_definition.def.to_owned());
     }
 }
 
 fn infer_expression_type(
     program: &Program,
     type_info: &TypeInfo,
-    identifier_types: &HashMap<String, Type>,
+    identifier_types: &HashMap<Rc<String>, Type>,
     current_function: &FunctionDefinition,
     expression: &Expression,
 ) -> Result<Type, String> {

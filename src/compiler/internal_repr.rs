@@ -1,5 +1,8 @@
 use core::panic;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    rc::Rc,
+};
 
 use crate::parser::{ast::AST, token_stream::Token};
 
@@ -64,7 +67,7 @@ pub(super) struct TypeDefinition {
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub(super) enum DestructuringComponent {
-    Identifier(String),
+    Identifier(Rc<String>),
     Destructuring(Destructuring),
     Number(i64),
 }
@@ -88,7 +91,7 @@ pub(super) enum Expression {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionArgument {
-    pub(super) identifier: String,
+    pub(super) identifier: Rc<String>,
     pub(super) typing: Type,
 }
 
@@ -107,13 +110,13 @@ pub(super) struct FunctionDefinition {
 impl FunctionDefinition {
     pub(super) fn is_not_pattern_matched(&self) -> bool {
         self.bodies.len() == 1 && self.bodies[0].0.components.is_empty()
-    } 
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct Program {
-    pub(super) functions: BTreeMap<String, FunctionDefinition>,
-    pub(super) types: HashMap<String, TypeDefinition>,
+    pub(super) functions: BTreeMap<Rc<String>, FunctionDefinition>,
+    pub(super) types: HashMap<Rc<String>, TypeDefinition>,
 }
 
 fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
@@ -161,7 +164,7 @@ fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
                     if first_component.is_none() {
                         first_component = Some(result);
                     } else {
-                        components.push(DestructuringComponent::Identifier(result));
+                        components.push(DestructuringComponent::Identifier(Rc::new(result)));
                     }
                 }
                 Some(Rules::Destructuring) => {
@@ -192,7 +195,7 @@ fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
     let type_ = result.unwrap();
     return if arg.id == Some(Rules::Identifier) {
         Ok(FunctionArgument {
-            identifier: arg.matched[0].unwrap_str(),
+            identifier: Rc::new(arg.matched[0].unwrap_str()),
             typing: type_,
         })
     } else {
@@ -305,9 +308,9 @@ fn pattern_matching_repr(ast: &AST<Rules>) -> Result<Vec<(Pattern, Expression)>,
         for component in &pattern.children[0].children {
             if component.matched[0] != Token::str(",") {
                 let destructuring = match component.id {
-                    Some(Rules::Identifier) => {
-                        DestructuringComponent::Identifier(component.matched[0].unwrap_str())
-                    }
+                    Some(Rules::Identifier) => DestructuringComponent::Identifier(Rc::new(
+                        component.matched[0].unwrap_str(),
+                    )),
                     Some(Rules::Destructuring) => {
                         let result = destructuring_repr(&component);
                         if result.is_err() {
@@ -463,7 +466,7 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
                 }
 
                 let (name, definition) = result.unwrap();
-                functions.insert(name, definition);
+                functions.insert(Rc::new(name), definition);
             }
             Some(Rules::TypeDef) => {
                 let result = type_definition_repr(node);
@@ -472,7 +475,7 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
                 }
 
                 let (name, definition) = result.unwrap();
-                types.insert(name, definition);
+                types.insert(Rc::new(name), definition);
             }
             _ => {
                 return Err(format!(
