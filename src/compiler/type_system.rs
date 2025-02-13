@@ -94,7 +94,7 @@ fn infer_expression_type(
         Expression::WithBlock(items, expression) => {
             let mut inner_types = identifier_types.clone();
             for (identifier, expr) in items {
-                let result = infer_expression_type(program, type_info,  identifier_types, current_function, expr);
+                let result = infer_expression_type(program, type_info, &inner_types, current_function, expr);
                 if result.is_err() {
                     return result;
                 }

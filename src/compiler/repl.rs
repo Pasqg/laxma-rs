@@ -496,7 +496,7 @@ impl REPL {
             Expression::WithBlock(items, expression) => {
                 let mut bindings = identifier_values.clone();
                 for (identifier, expr) in items {
-                    let result = self.evaluate_expression(identifier_values, expr);
+                    let result = self.evaluate_expression(&bindings, expr);
                     if result.is_err() {
                         return result;
                     }
