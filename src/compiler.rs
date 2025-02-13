@@ -59,6 +59,21 @@ pub fn compile_expression(expression: &Expression) -> String {
         }
         Expression::Identifier(var) => format!("{}", var),
         Expression::Number(n) => format!("{}", n),
+        Expression::WithBlock(items, expression) => {
+            format!(
+                "{}\n{}",
+                items
+                    .iter()
+                    .map(|(id, expr)| format!(
+                        "let {} = {};",
+                        id.to_string(),
+                        compile_expression(expr)
+                    ))
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+                compile_expression(expression)
+            )
+        }
     }
 }
 
@@ -103,7 +118,11 @@ fn compile_function(
                     DestructuringComponent::Identifier(variant) => {
                         let type_definition = program.types.get(arg_type);
                         let constant = if type_definition.is_some() {
-                            if !type_definition.unwrap().variants.contains_key(variant.as_ref()) {
+                            if !type_definition
+                                .unwrap()
+                                .variants
+                                .contains_key(variant.as_ref())
+                            {
                                 return Err(format!(
                                     "Variant {variant} doesn't exist for type {arg_type}"
                                 ));

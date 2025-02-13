@@ -91,6 +91,17 @@ fn infer_expression_type(
                 Err(format!("Function '{}' was not defined", function_call.name))
             }
         }
+        Expression::WithBlock(items, expression) => {
+            let mut inner_types = identifier_types.clone();
+            for (identifier, expr) in items {
+                let result = infer_expression_type(program, type_info,  identifier_types, current_function, expr);
+                if result.is_err() {
+                    return result;
+                }
+                inner_types.insert(identifier.clone(), result.unwrap());
+            }
+            infer_expression_type(program, type_info,  identifier_types, current_function, expression.as_ref())
+        }
         Expression::Identifier(var) => {
             let var_type = identifier_types.get(var);
             if var_type.is_some() {

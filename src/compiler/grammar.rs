@@ -18,6 +18,7 @@ pub enum Rules {
     FunctionCall,
     Arguments,
     Expression,
+    WithBlock,
 
     TypeDef,
     FunctionSignature,
@@ -27,6 +28,7 @@ pub enum Rules {
     Pattern,
     PatternMatching,
 
+    Element,
     Elements,
 
     Program,
@@ -131,9 +133,24 @@ pub fn expression_parser() -> Combinators<Rules> {
         )
     };
 
+    let with_block = || {
+        and_match(
+            Rules::WithBlock,
+            vec![
+                slit("with"),
+                many(
+                    Some(Rules::Elements),
+                    and_match(Rules::Element, vec![identifier(), slit("="), expression.clone()]),
+                    None,
+                ),
+                expression.clone()
+            ],
+        )
+    };
+
     let expression_body = or_match(
         Rules::Expression,
-        vec![function_call(), type_constructor(), identifier(), number()],
+        vec![with_block(), function_call(), type_constructor(), identifier(), number()],
     );
     expression.bind(expression_body);
     expression

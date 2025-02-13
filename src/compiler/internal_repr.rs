@@ -87,6 +87,7 @@ pub(super) enum Expression {
     FunctionCall(FunctionCall),
     Identifier(String),
     Number(i64),
+    WithBlock(Vec<(Rc<String>, Expression)>, Rc<Expression>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -289,6 +290,22 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
                 ast.matched[2].unwrap_str(),
                 parameters,
             ))
+        }
+        Some(Rules::WithBlock) => {
+            let mut elements = Vec::new();
+            for child in &body.children[1].children {
+                let identifier = child.children[0].matched[0].unwrap_str();
+                let expr = expression_repr(&child.children[2]);
+                if expr.is_err() {
+                    return Err(expr.unwrap_err());
+                }
+                elements.push((Rc::new(identifier), expr.unwrap()));
+            }
+            let result = expression_repr(&body.children[2]);
+            if result.is_err() {
+                return Err(result.unwrap_err());
+            }
+            Ok(Expression::WithBlock(elements, Rc::new(result.unwrap())))
         }
         _ => Err(format!(
             "Expected FunctionCall, Identifier or Number, but got {}",

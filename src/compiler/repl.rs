@@ -492,14 +492,25 @@ impl REPL {
                         function_call.name
                     ))
                 }
-            },
+            }
+            Expression::WithBlock(items, expression) => {
+                let mut bindings = identifier_values.clone();
+                for (identifier, expr) in items {
+                    let result = self.evaluate_expression(identifier_values, expr);
+                    if result.is_err() {
+                        return result;
+                    }
+                    bindings.insert(identifier.clone(), result.unwrap());
+                }
+                return self.evaluate_expression(&bindings, expression);
+            }
             Expression::Identifier(identifier) => match identifier_values.get(identifier) {
                 Some(value) => Ok(value.clone()),
                 None => Err(format!(
                     "Unknown identifier '{}'  | {:?}",
                     identifier, identifier_values
                 )),
-            },
+            }
             Expression::Number(x) => Ok(Rc::new(Value::Num(*x))),
         }
     }
