@@ -197,7 +197,6 @@ pub fn infer_function_type(
                                 for inner_component in &destructuring.1 {
                                     match inner_component {
                                         DestructuringComponent::Identifier(identifier) if identifier.as_str() != "_" => {
-                                            println!("Added {}", identifier);
                                             identifier_types.insert(identifier.clone(), items[k].clone());
                                         }
                                         _ => {}

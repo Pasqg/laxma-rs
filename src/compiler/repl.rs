@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
-use std::io::Write;
 
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::infer_function_type;
@@ -185,11 +184,10 @@ impl REPL {
                             return Err(format!("Cannot destructure variant '{variant}' of type '{name}' with zero elements, because constructor requires {} arguments", values.len()));
                         }
                     }
-                    //todo: think about whether to allow this. Might be nicer to force use of "_" instead of re-binding
                     Value::Num(_) => {
                         //todo: multiple "_" should also be considered wildcard
                         if identifier.as_str() != "_" {
-                            bindings.insert(identifier.to_owned(), arg.clone());
+                            return Err(format!("Redundant re-binding '{identifier}' of numerical argument {i} in function '{function_name}'"));
                         }
                     }
                     Value::Bool(bool_val) => {
@@ -217,17 +215,8 @@ impl REPL {
                             match (pattern, value) {
                                 (DestructuringComponent::Identifier(i), _) if i.as_str() == "_" => {
                                 }
-                                (
-                                    DestructuringComponent::Identifier(identifier),
-                                    Value::Typed(name, variant, values),
-                                ) => {
-                                    if identifier.as_str() != variant.as_str() {
-                                        return Ok(PatternMatchResult::no_match());
-                                    }
-
-                                    if !values.is_empty() {
-                                        return Err(format!("Cannot destructure variant '{variant}' of type '{name}' with zero elements, because constructor requires {} arguments", values.len()));
-                                    }
+                                (DestructuringComponent::Identifier(i), Value::Typed(_, _, _)) => {
+                                    bindings.insert(i.to_owned(), value.clone());
                                 }
                                 (DestructuringComponent::Number(x), Value::Num(y)) => {
                                     if x != y {
@@ -418,7 +407,7 @@ impl REPL {
                     for i in 0..actual_arg_num {
                         // Evaluate parameter value
                         let result = self
-                            .evaluate_expression(identifier_values, &function_call.parameters[i]);
+                            .evaluate_expression(&identifier_values, &function_call.parameters[i]);
                         if result.is_err() {
                             return result;
                         }
@@ -488,8 +477,8 @@ impl REPL {
                         }
                         let result = result.unwrap();
                         if result.is_match {
-                            let mut bindings = result.bindings;
-                            for (k, v) in &arg_values {
+                            let mut bindings = arg_values.clone();
+                            for (k, v) in &result.bindings {
                                 bindings.insert(k.clone(), v.clone());
                             }
                             return self.evaluate_expression(&bindings, expression);
