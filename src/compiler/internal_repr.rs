@@ -1,5 +1,5 @@
 use core::panic;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::parser::{ast::AST, token_stream::Token};
 
@@ -112,7 +112,7 @@ impl FunctionDefinition {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct Program {
-    pub(super) functions: HashMap<String, FunctionDefinition>,
+    pub(super) functions: BTreeMap<String, FunctionDefinition>,
     pub(super) types: HashMap<String, TypeDefinition>,
 }
 
@@ -452,7 +452,7 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
         return Err(format!("Expected a Program AST but got {:?}", ast.id));
     }
 
-    let mut functions = HashMap::new();
+    let mut functions = BTreeMap::new();
     let mut types = HashMap::new();
     for node in &ast.children {
         match node.id {

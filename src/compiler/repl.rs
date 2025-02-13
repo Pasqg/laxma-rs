@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::io::Write;
 
@@ -89,7 +89,7 @@ impl REPL {
     pub fn new() -> Self {
         Self {
             program: Program {
-                functions: HashMap::new(),
+                functions: BTreeMap::new(),
                 types: HashMap::new(),
             },
             type_info: TypeInfo::new(),
