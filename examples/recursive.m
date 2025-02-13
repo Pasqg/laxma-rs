@@ -7,5 +7,6 @@ fn fibonacci n : Int =
     1 -> list ( 0 )
     2 -> cons ( 1 list ( 0 ) )
     _ -> with
-            xs = fibonacci ( - ( n 1 ) )
-            cons ( + ( first ( xs ) second ( xs ) ) xs )
+            fibonacci = with n = - ( n 1 ) fibonacci ( n )
+            x = + ( first ( fibonacci ) second ( fibonacci ) )
+            cons ( x fibonacci )
