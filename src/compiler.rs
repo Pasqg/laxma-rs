@@ -59,21 +59,21 @@ pub fn compile_expression(expression: &Expression) -> String {
         }
         Expression::Identifier(var) => format!("{}", var),
         Expression::Number(n) => format!("{}", n),
-        Expression::WithBlock(items, expression) => {
-            format!(
-                "{}\n{}",
-                items
-                    .iter()
-                    .map(|(id, expr)| format!(
-                        "let {} = {};",
-                        id.to_string(),
-                        compile_expression(expr)
-                    ))
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-                compile_expression(expression)
-            )
-        }
+        Expression::WithBlock(items, expression) => format!(
+            "{}\n{}",
+            items
+                .iter()
+                .map(|(id, expr)| format!("let {} = {};", id.to_string(), compile_expression(expr)))
+                .collect::<Vec<String>>()
+                .join("\n"),
+            compile_expression(expression)
+        ),
+        Expression::If(condition, true_branch, false_branch) => format!(
+            "if {} {{ {} }} else {{ {} }}",
+            compile_expression(condition),
+            compile_expression(true_branch),
+            compile_expression(false_branch)
+        ),
     }
 }
 

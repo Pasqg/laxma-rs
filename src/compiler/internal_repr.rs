@@ -88,6 +88,7 @@ pub(super) enum Expression {
     Identifier(String),
     Number(i64),
     WithBlock(Vec<(Rc<String>, Expression)>, Rc<Expression>),
+    If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -307,8 +308,24 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
             }
             Ok(Expression::WithBlock(elements, Rc::new(result.unwrap())))
         }
+        Some(Rules::IfExpression) => {
+            let condition = expression_repr(&body.children[1]);
+            if condition.is_err() {
+                return Err(condition.unwrap_err());
+            }
+            let true_branch = expression_repr(&body.children[2]);
+            if true_branch.is_err() {
+                return Err(true_branch.unwrap_err());
+            }
+            let false_branch = expression_repr(&body.children[3]);
+            if false_branch.is_err() {
+                return Err(false_branch.unwrap_err());
+            }
+
+            Ok(Expression::If(Rc::new(condition.unwrap()), Rc::new(true_branch.unwrap()), Rc::new(false_branch.unwrap())))
+        }
         _ => Err(format!(
-            "Expected FunctionCall, Identifier or Number, but got {}",
+            "Expected WithExpression, IfExpression, FunctionCall, Identifier or Number, but got {}",
             body
         )),
     }

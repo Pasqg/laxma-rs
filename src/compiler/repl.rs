@@ -504,7 +504,23 @@ impl REPL {
                 }
                 return self.evaluate_expression(&bindings, expression);
             }
-            Expression::Identifier(identifier) => match identifier_values.get(identifier) {
+            Expression::If(condition, true_branch, false_branch) => {
+                let condition = self.evaluate_expression(identifier_values, condition);
+                if condition.is_err() {
+                    return condition;
+                }
+
+                match condition.unwrap().as_ref() {
+                    Value::Bool(condition) =>
+                        if *condition {
+                            self.evaluate_expression(identifier_values, true_branch)
+                        } else {
+                            self.evaluate_expression(identifier_values, false_branch)
+                        },
+                    _ => return Err(format!("Bug! If condition should be Bool"))
+                }
+            }
+             Expression::Identifier(identifier) => match identifier_values.get(identifier) {
                 Some(value) => Ok(value.clone()),
                 None => Err(format!(
                     "Unknown identifier '{}'  | {:?}",

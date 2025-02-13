@@ -19,6 +19,7 @@ pub enum Rules {
     Arguments,
     Expression,
     WithBlock,
+    IfExpression,
 
     TypeDef,
     FunctionSignature,
@@ -133,24 +134,46 @@ pub fn expression_parser() -> Combinators<Rules> {
         )
     };
 
-    let with_block = || {
+    let with_expression = || {
         and_match(
             Rules::WithBlock,
             vec![
                 slit("with"),
                 many(
                     Some(Rules::Elements),
-                    and_match(Rules::Element, vec![identifier(), slit("="), expression.clone()]),
+                    and_match(
+                        Rules::Element,
+                        vec![identifier(), slit("="), expression.clone()],
+                    ),
                     None,
                 ),
-                expression.clone()
+                expression.clone(),
+            ],
+        )
+    };
+
+    let if_expression = || {
+        and_match(
+            Rules::IfExpression,
+            vec![
+                slit("if"),
+                expression.clone(),
+                expression.clone(),
+                expression.clone(),
             ],
         )
     };
 
     let expression_body = or_match(
         Rules::Expression,
-        vec![with_block(), function_call(), type_constructor(), identifier(), number()],
+        vec![
+            with_expression(),
+            if_expression(),
+            function_call(),
+            type_constructor(),
+            identifier(),
+            number(),
+        ],
     );
     expression.bind(expression_body);
     expression

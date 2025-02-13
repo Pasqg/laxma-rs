@@ -102,6 +102,33 @@ fn infer_expression_type(
             }
             infer_expression_type(program, type_info,  identifier_types, current_function, expression.as_ref())
         }
+        Expression::If(condition, when_true, when_false) => {
+            let result = infer_expression_type(program, type_info, identifier_types, current_function, condition);
+            if result.is_err() {
+                return result;
+            }
+            let result = result.unwrap();
+            if result != Type::SimpleType("Bool".to_string()) {
+                return Err(format!("If condition must be boolean but got '{}'", result.name()));
+            }
+
+            let true_type = infer_expression_type(program, type_info, identifier_types, current_function, &when_true);
+            if true_type.is_err() {
+                return true_type;
+            }
+            let false_type = infer_expression_type(program, type_info, identifier_types, current_function, &when_false);
+            if false_type.is_err() {
+                return false_type;
+            }
+
+            let true_type = true_type.unwrap();
+            let false_type = false_type.unwrap();
+            if false_type != true_type {
+                return Err(format!("If branches must have same type but got '{}' and '{}", true_type.name(), false_type.name()))
+            }
+
+            Ok(true_type)
+        }
         Expression::Identifier(var) => {
             let var_type = identifier_types.get(var);
             if var_type.is_some() {
