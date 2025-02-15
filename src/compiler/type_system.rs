@@ -1,4 +1,7 @@
-use std::{collections::{HashMap, HashSet}, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use super::{
     internal_repr::{Expression, FunctionDefinition, Program, Type},
@@ -20,9 +23,9 @@ impl TypeInfo {
             "Bool".to_string(),
             "Void".to_string(),
         ]);
-        let bool_type = Type::SimpleType("Bool".to_string());
-        let void_type = Type::SimpleType("Void".to_string());
-        let int_type = Type::SimpleType("Int".to_string());
+        let bool_type = Type::SimpleType(Rc::new("Bool".to_string()));
+        let void_type = Type::SimpleType(Rc::new("Void".to_string()));
+        let int_type = Type::SimpleType(Rc::new("Int".to_string()));
         Self {
             primitive_types,
             user_types: HashMap::new(),
@@ -46,6 +49,10 @@ impl TypeInfo {
     pub fn add_user_type(&mut self, type_name: Rc<String>, type_definition: &TypeDefinition) {
         self.user_types
             .insert(type_name, type_definition.def.to_owned());
+    }
+
+    pub fn type_exists(&self, type_name: &Rc<String>) -> bool {
+        self.primitive_types.contains(type_name.as_ref()) || self.user_types.contains_key(type_name)
     }
 }
 
@@ -97,29 +104,57 @@ fn infer_expression_type(
         Expression::WithBlock(items, expression) => {
             let mut inner_types = identifier_types.clone();
             for (identifier, expr) in items {
-                let result = infer_expression_type(program, type_info, &inner_types, current_function, expr);
+                let result =
+                    infer_expression_type(program, type_info, &inner_types, current_function, expr);
                 if result.is_err() {
                     return result;
                 }
                 inner_types.insert(identifier.clone(), result.unwrap());
             }
-            infer_expression_type(program, type_info,  identifier_types, current_function, expression.as_ref())
+            infer_expression_type(
+                program,
+                type_info,
+                identifier_types,
+                current_function,
+                expression.as_ref(),
+            )
         }
         Expression::If(condition, when_true, when_false) => {
-            let result = infer_expression_type(program, type_info, identifier_types, current_function, condition);
+            let result = infer_expression_type(
+                program,
+                type_info,
+                identifier_types,
+                current_function,
+                condition,
+            );
             if result.is_err() {
                 return result;
             }
             let result = result.unwrap();
-            if result != Type::SimpleType("Bool".to_string()) {
-                return Err(format!("If condition must be boolean but got '{}'", result.name()));
+            if result != Type::SimpleType(Rc::new("Bool".to_string())) {
+                return Err(format!(
+                    "If condition must be boolean but got '{}'",
+                    result.name()
+                ));
             }
 
-            let true_type = infer_expression_type(program, type_info, identifier_types, current_function, &when_true);
+            let true_type = infer_expression_type(
+                program,
+                type_info,
+                identifier_types,
+                current_function,
+                &when_true,
+            );
             if true_type.is_err() {
                 return true_type;
             }
-            let false_type = infer_expression_type(program, type_info, identifier_types, current_function, &when_false);
+            let false_type = infer_expression_type(
+                program,
+                type_info,
+                identifier_types,
+                current_function,
+                &when_false,
+            );
             if false_type.is_err() {
                 return false_type;
             }
@@ -127,7 +162,11 @@ fn infer_expression_type(
             let true_type = true_type.unwrap();
             let false_type = false_type.unwrap();
             if false_type != true_type {
-                return Err(format!("If branches must have same type but got '{}' and '{}", true_type.name(), false_type.name()))
+                return Err(format!(
+                    "If branches must have same type but got '{}' and '{}",
+                    true_type.name(),
+                    false_type.name()
+                ));
             }
 
             Ok(true_type)
@@ -143,7 +182,7 @@ fn infer_expression_type(
                 ))
             }
         }
-        Expression::Number(_) => Ok(Type::SimpleType("Int".to_string())),
+        Expression::Number(_) => Ok(Type::SimpleType(Rc::new("Int".to_string()))),
     }
 }
 
@@ -157,13 +196,11 @@ pub fn infer_function_type(
         arg_types.insert(constant.clone(), _type.clone());
     }
     for argument in &current_function.arguments {
-        match argument.typing {
+        match &argument.typing {
             Type::TypeParameter(_) => {}
             Type::SimpleType(_) | Type::ParametrizedType(_, _) => {
                 let arg_type = argument.typing.name();
-                if !type_info.primitive_types.contains(arg_type)
-                    && !program.types.contains_key(arg_type)
-                {
+                if !type_info.type_exists(&arg_type) {
                     return Err(format!("'{}' is not a valid type", arg_type));
                 }
             }
@@ -171,6 +208,19 @@ pub fn infer_function_type(
                 "Unknown type is invalid for argument '{}' of function '{}'",
                 argument.identifier, current_function.name
             ),
+            Type::FunctionType(args, return_type) => {
+                for arg_type in args {
+                    let type_name = arg_type.name();
+                    if !type_info.type_exists(&type_name) {
+                        return Err(format!("'{}' is not a valid type", type_name.as_ref()));
+                    }
+                }
+
+                let type_name = return_type.name();
+                if !type_info.type_exists(&type_name) {
+                    return Err(format!("'{}' is not a valid type", type_name.as_ref()));
+                }
+            }
         }
 
         arg_types.insert(argument.identifier.clone(), argument.typing.clone());
@@ -207,7 +257,9 @@ pub fn infer_function_type(
             for component in &destructuring.components {
                 let arg = &current_function.arguments[i];
                 match component {
-                    DestructuringComponent::Identifier(identifier) if identifier.as_str() != "_" => {
+                    DestructuringComponent::Identifier(identifier)
+                        if identifier.as_str() != "_" =>
+                    {
                         identifier_types.insert(
                             identifier.clone(),
                             arg_types.get(&arg.identifier).unwrap().clone(),
@@ -215,7 +267,7 @@ pub fn infer_function_type(
                     }
                     //todo: don't do this twice in repl maybe?
                     DestructuringComponent::Destructuring(destructuring) => {
-                        let result = program.types.get(arg.typing.name());
+                        let result = program.types.get(arg.typing.name().as_ref());
                         if result.is_none() {
                             return Err(format!("Cannot find type '{}' for argument '{}' of function '{function_name}'", arg.typing.name(), arg.identifier));
                         }
@@ -237,8 +289,11 @@ pub fn infer_function_type(
                                 let mut k = 0;
                                 for inner_component in &destructuring.1 {
                                     match inner_component {
-                                        DestructuringComponent::Identifier(identifier) if identifier.as_str() != "_" => {
-                                            identifier_types.insert(identifier.clone(), items[k].clone());
+                                        DestructuringComponent::Identifier(identifier)
+                                            if identifier.as_str() != "_" =>
+                                        {
+                                            identifier_types
+                                                .insert(identifier.clone(), items[k].clone());
                                         }
                                         _ => {}
                                     }

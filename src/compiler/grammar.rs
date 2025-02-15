@@ -11,6 +11,7 @@ pub enum Rules {
     TypeName,
     TypeParameter,
     ParametrizedType,
+    FunctionType,
     Argument,
     Destructuring,
 
@@ -79,7 +80,18 @@ fn type_name() -> Combinators<Rules> {
             ],
         )
     };
-    type_name.bind(or_match_flat(vec![parametrized_type(), basic_type_name()]));
+
+    let function_type = || {
+        and_match(
+            Rules::FunctionType,
+            vec![
+                many(Some(Rules::Arguments), type_name.clone(), None),
+                slit("->"),
+                type_name.clone(),
+            ],
+        )
+    };
+    type_name.bind(or_match_flat(vec![function_type(), parametrized_type(), basic_type_name()]));
     type_name
 }
 

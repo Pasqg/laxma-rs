@@ -10,23 +10,25 @@ use super::grammar::Rules;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub(super) enum Type {
-    SimpleType(String),
-    TypeParameter(String),
-    ParametrizedType(String, Vec<Type>),
+    SimpleType(Rc<String>),
+    TypeParameter(Rc<String>),
+    ParametrizedType(Rc<String>, Vec<Type>),
+    FunctionType(Vec<Type>, Rc<Type>),
     Unknown,
 }
 
 impl Type {
-    pub fn name(&self) -> &String {
+    pub fn name(&self) -> Rc<String> {
         match self {
-            Type::SimpleType(name) => name,
-            Type::TypeParameter(name) => name,
-            Type::ParametrizedType(name, _) => name,
+            Type::SimpleType(name) => name.clone(),
+            Type::TypeParameter(name) => name.clone(),
+            Type::ParametrizedType(name, _) => name.clone(),
+            Type::FunctionType(inputs, output) => Rc::new(String::new()),
             Type::Unknown => panic!("Uknown type doesn't have name"),
         }
     }
 
-    pub fn type_parameters(&self) -> HashSet<String> {
+    pub fn type_parameters(&self) -> HashSet<Rc<String>> {
         match self {
             Type::SimpleType(_) => HashSet::new(),
             Type::TypeParameter(param) => HashSet::from([param.clone()]),
@@ -39,6 +41,8 @@ impl Type {
                 }
                 parameters
             }
+            //todo: returns all the type params in inputs and output
+            Type::FunctionType(inputs, output) => HashSet::new(),
             Type::Unknown => HashSet::new(),
         }
     }
@@ -124,8 +128,8 @@ pub(super) struct Program {
 fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
     let name = ast.matched[0].unwrap_str();
     return match ast.id {
-        Some(Rules::Identifier) => Ok(Type::SimpleType(name)),
-        Some(Rules::TypeParameter) => Ok(Type::TypeParameter(name)),
+        Some(Rules::Identifier) => Ok(Type::SimpleType(Rc::new(name))),
+        Some(Rules::TypeParameter) => Ok(Type::TypeParameter(Rc::new(name))),
         Some(Rules::ParametrizedType) => {
             let subtype = &ast.children[2];
             if subtype.id == Some(Rules::Identifier) || subtype.id != Some(Rules::Elements) {
@@ -133,7 +137,7 @@ fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
                 if result.is_err() {
                     return Err(result.unwrap_err());
                 }
-                return Ok(Type::ParametrizedType(name, vec![result.unwrap()]));
+                return Ok(Type::ParametrizedType(Rc::new(name), vec![result.unwrap()]));
             }
 
             let mut type_params = Vec::new();
@@ -145,7 +149,7 @@ fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
                 type_params.push(result.unwrap());
             }
 
-            Ok(Type::ParametrizedType(name, type_params))
+            Ok(Type::ParametrizedType(Rc::new(name), type_params))
         }
         _ => Err(format!("Expected a type but got {:?}", ast)),
     };
@@ -446,7 +450,7 @@ fn type_variant_repr(ast: &AST<Rules>) -> Result<(String, TypeVariant), String> 
     Ok((name.clone(), TypeVariant::Constant(name)))
 }
 
-fn type_definition_repr(ast: &AST<Rules>) -> Result<(String, TypeDefinition), String> {
+fn type_definition_repr(ast: &AST<Rules>) -> Result<(Rc<String>, TypeDefinition), String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::TypeDef {
         return Err(format!("Expected a TypeDef AST but got {:?}", ast.id));
     }
@@ -481,7 +485,7 @@ fn type_definition_repr(ast: &AST<Rules>) -> Result<(String, TypeDefinition), St
         variants: variants,
     };
 
-    Ok((_type.name().clone(), definition))
+    Ok((_type.name(), definition))
 }
 
 pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
@@ -509,7 +513,7 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
                 }
 
                 let (name, definition) = result.unwrap();
-                types.insert(Rc::new(name), definition);
+                types.insert(name, definition);
             }
             _ => {
                 return Err(format!(
