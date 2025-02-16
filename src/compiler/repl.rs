@@ -7,8 +7,11 @@ use crate::compiler::type_system::infer_function_type;
 use crate::parser::combinators::ParserCombinator;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
-use super::internal_repr::{expression_repr, Pattern};
-use super::{DestructuringComponent, Expression, Program, Type, TypeInfo, TypeVariant};
+use super::internal_repr::{
+    expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
+    Program, Type, TypeVariant,
+};
+use super::type_system::TypeInfo;
 
 #[derive(Clone, Debug)]
 enum Value {
