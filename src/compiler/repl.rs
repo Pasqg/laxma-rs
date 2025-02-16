@@ -190,12 +190,14 @@ impl REPL {
                 // Should also add binding of identifier to value!
                 DestructuringComponent::Identifier(identifier) => match arg.as_ref() {
                     Value::Typed(name, variant, values) => {
-                        if identifier.as_str() != variant.as_str() {
-                            return Ok(PatternMatchResult::no_match());
-                        }
+                        if identifier.as_str() != "_" {
+                            if identifier.as_str() != variant.as_str() {
+                                return Ok(PatternMatchResult::no_match());
+                            }
 
-                        if !values.is_empty() {
-                            return Err(format!("Cannot destructure variant '{variant}' of type '{name}' with zero elements, because constructor requires {} arguments", values.len()));
+                            if !values.is_empty() {
+                                return Err(format!("Cannot destructure variant '{variant}' of type '{name}' with zero elements, because constructor requires {} arguments", values.len()));
+                            }
                         }
                     }
                     Value::Num(_) => {
