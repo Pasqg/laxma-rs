@@ -13,11 +13,18 @@ pub(super) enum Type {
     SimpleType(Rc<String>),
     TypeParameter(Rc<String>),
     ParametrizedType(Rc<String>, Vec<Type>),
-    FunctionType(Vec<Type>, Rc<Type>),
+    FunctionType(Vec<Rc<Type>>, Rc<Type>),
     Unknown,
 }
 
 impl Type {
+    pub fn is_unknown(&self) -> bool {
+        match self {
+            Type::Unknown => true,
+            _ => false,
+        }
+    }
+
     pub fn name(&self) -> Rc<String> {
         match self {
             Type::SimpleType(name) => name.clone(),
@@ -59,7 +66,7 @@ impl Type {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) enum TypeVariant {
     Constant(String),
-    Cartesian(String, Vec<Type>),
+    Cartesian(String, Vec<Rc<Type>>),
 }
 
 impl TypeVariant {
@@ -73,7 +80,7 @@ impl TypeVariant {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct TypeDefinition {
-    pub(super) def: Type,
+    pub(super) def: Rc<Type>,
     pub(super) variants: HashMap<String, TypeVariant>,
 }
 
@@ -106,7 +113,7 @@ pub(super) enum Expression {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionArgument {
     pub(super) identifier: Rc<String>,
-    pub(super) typing: Type,
+    pub(super) typing: Rc<Type>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -210,7 +217,7 @@ fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
     return if arg.id == Some(Rules::Identifier) {
         Ok(FunctionArgument {
             identifier: Rc::new(arg.matched[0].unwrap_str()),
-            typing: type_,
+            typing: Rc::new(type_),
         })
     } else {
         Err(format!(
@@ -454,7 +461,7 @@ fn type_variant_repr(ast: &AST<Rules>) -> Result<(String, TypeVariant), String> 
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
-            components.push(result.unwrap());
+            components.push(Rc::new(result.unwrap()));
         }
         return Ok((name.clone(), TypeVariant::Cartesian(name, components)));
     }
@@ -492,12 +499,13 @@ fn type_definition_repr(ast: &AST<Rules>) -> Result<(Rc<String>, TypeDefinition)
         }
     }
 
+    let type_rc = Rc::new(_type);
     let definition = TypeDefinition {
-        def: _type.clone(),
+        def: Rc::clone(&type_rc),
         variants: variants,
     };
 
-    Ok((_type.name(), definition))
+    Ok((type_rc.name(), definition))
 }
 
 pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
