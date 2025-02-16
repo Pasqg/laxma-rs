@@ -8,6 +8,7 @@ use super::internal_repr::{
     TypeVariant,
 };
 
+#[derive(Debug, Clone)]
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<String>,
     pub(super) user_types: HashMap<Rc<String>, Rc<Type>>,
@@ -88,6 +89,22 @@ fn infer_expression_type(
             } else if current_function.name == function_call.name {
                 Ok(Rc::new(Type::Unknown))
             } else {
+                let id_type = identifier_types.get(&function_call.name);
+                if id_type.is_some() {
+                    match id_type.unwrap().as_ref() {
+                        Type::FunctionType(_, return_type) => {
+                            return Ok(Rc::clone(return_type));
+                        }
+                        _ => {
+                            return Err(format!(
+                                "'{}' with type '{} is not callable",
+                                function_call.name,
+                                id_type.unwrap().name()
+                            ));
+                        }
+                    }
+                }
+
                 let function_definition = program.functions.get(&function_call.name);
                 if function_definition.is_some() {
                     let function_type =
@@ -176,11 +193,15 @@ fn infer_expression_type(
 
             let true_type = true_type.unwrap();
             let false_type = false_type.unwrap();
+            if false_type.is_unknown() || true_type.is_unknown() {
+                return Ok(true_type);
+            }
+
             if false_type != true_type {
                 return Err(format!(
                     "If branches must have same type but got '{}' and '{}'",
                     true_type.name(),
-                    false_type.name()
+                    false_type.name(),
                 ));
             }
 

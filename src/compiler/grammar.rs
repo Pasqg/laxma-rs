@@ -85,7 +85,9 @@ fn type_name() -> Combinators<Rules> {
         and_match(
             Rules::FunctionType,
             vec![
+                slit("("),
                 many(Some(Rules::Arguments), type_name.clone(), None),
+                slit(")"),
                 slit("->"),
                 type_name.clone(),
             ],

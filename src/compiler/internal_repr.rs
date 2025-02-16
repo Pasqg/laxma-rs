@@ -36,7 +36,7 @@ impl Type {
                     .iter()
                     .map(|t| t.name().to_string())
                     .collect::<Vec<String>>()
-                    .join(","),
+                    .join(", "),
                 output.name()
             )),
             Type::Unknown => Rc::new("Unknown".to_string()),
@@ -166,7 +166,26 @@ fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
 
             Ok(Type::ParametrizedType(Rc::new(name), type_params))
         }
-        _ => Err(format!("Expected a type but got {:?}", ast)),
+        Some(Rules::FunctionType) => {
+            let arguments = &ast.children[1];
+            let mut types = Vec::new();
+            for child in &arguments.children {
+                let result = type_repr(child);
+                if result.is_err() {
+                    return result;
+                }
+                types.push(Rc::new(result.unwrap()));
+            }
+
+            let result = type_repr(&ast.children[4]);
+            if result.is_err() {
+                return result;
+            }
+            let return_type = Rc::new(result.unwrap());
+
+            Ok(Type::FunctionType(types, return_type))
+        }
+        _ => Err(format!("Expected a type but got {}", ast)),
     };
 }
 
@@ -267,7 +286,7 @@ fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), S
 
 pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::Expression {
-        return Err(format!("Expected Expression but got {}", ast));
+        return Err(format!("Expected Expression but got {:?}", ast.id));
     }
 
     let body = &ast.children[0];
