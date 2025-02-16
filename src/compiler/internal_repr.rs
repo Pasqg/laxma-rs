@@ -23,7 +23,15 @@ impl Type {
             Type::SimpleType(name) => name.clone(),
             Type::TypeParameter(name) => name.clone(),
             Type::ParametrizedType(name, _) => name.clone(),
-            Type::FunctionType(inputs, output) => Rc::new(String::new()),
+            Type::FunctionType(inputs, output) => Rc::new(format!(
+                "({}) -> {}",
+                inputs
+                    .iter()
+                    .map(|t| t.name().to_string())
+                    .collect::<Vec<String>>()
+                    .join(","),
+                output.name()
+            )),
             Type::Unknown => panic!("Uknown type doesn't have name"),
         }
     }
@@ -326,7 +334,11 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
                 return Err(false_branch.unwrap_err());
             }
 
-            Ok(Expression::If(Rc::new(condition.unwrap()), Rc::new(true_branch.unwrap()), Rc::new(false_branch.unwrap())))
+            Ok(Expression::If(
+                Rc::new(condition.unwrap()),
+                Rc::new(true_branch.unwrap()),
+                Rc::new(false_branch.unwrap()),
+            ))
         }
         _ => Err(format!(
             "Expected WithExpression, IfExpression, FunctionCall, Identifier or Number, but got {}",
