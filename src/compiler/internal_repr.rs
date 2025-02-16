@@ -39,7 +39,7 @@ impl Type {
                     .join(","),
                 output.name()
             )),
-            Type::Unknown => panic!("Uknown type doesn't have name"),
+            Type::Unknown => Rc::new("Unknown".to_string()),
         }
     }
 

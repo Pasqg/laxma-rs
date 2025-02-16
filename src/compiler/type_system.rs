@@ -3,15 +3,15 @@ use std::{
     rc::Rc,
 };
 
-use super::{
-    internal_repr::{Expression, FunctionDefinition, Program, Type},
-    DestructuringComponent, TypeDefinition,
+use super::internal_repr::{
+    DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
+    TypeVariant,
 };
 
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<String>,
     pub(super) user_types: HashMap<Rc<String>, Rc<Type>>,
-    pub(super) function_types: HashMap<Rc<String>, Rc<Type>>,
+    pub(super) function_return_types: HashMap<Rc<String>, Rc<Type>>,
     pub(super) constant_types: HashMap<Rc<String>, Rc<Type>>,
 }
 
@@ -29,7 +29,7 @@ impl TypeInfo {
         Self {
             primitive_types,
             user_types: HashMap::new(),
-            function_types: HashMap::from([
+            function_return_types: HashMap::from([
                 (Rc::new("print".to_string()), Rc::clone(&void_type)),
                 (Rc::new("+".to_string()), Rc::clone(&int_type)),
                 (Rc::new("-".to_string()), Rc::clone(&int_type)),
@@ -82,7 +82,7 @@ fn infer_expression_type(
             }
         }
         Expression::FunctionCall(function_call) => {
-            let function_type = type_info.function_types.get(&function_call.name);
+            let function_type = type_info.function_return_types.get(&function_call.name);
             if function_type.is_some() {
                 Ok(Rc::clone(function_type.unwrap()))
             } else if current_function.name == function_call.name {
@@ -105,7 +105,7 @@ fn infer_expression_type(
                     };
                 }
 
-                let builtin = type_info.function_types.get(&function_call.name);
+                let builtin = type_info.function_return_types.get(&function_call.name);
                 if builtin.is_some() {
                     return Ok(builtin.unwrap().to_owned());
                 }
@@ -178,7 +178,7 @@ fn infer_expression_type(
             let false_type = false_type.unwrap();
             if false_type != true_type {
                 return Err(format!(
-                    "If branches must have same type but got '{}' and '{}",
+                    "If branches must have same type but got '{}' and '{}'",
                     true_type.name(),
                     false_type.name()
                 ));
@@ -242,6 +242,11 @@ pub fn infer_function_type(
     }
 
     let function_name = &current_function.name;
+    let function_type_args = current_function
+        .arguments
+        .iter()
+        .map(|arg| Rc::clone(&arg.typing))
+        .collect();
     if current_function.is_not_pattern_matched() {
         let result = infer_expression_type(
             program,
@@ -261,14 +266,7 @@ pub fn infer_function_type(
             ));
         }
 
-        Ok(Rc::new(Type::FunctionType(
-            current_function
-                .arguments
-                .iter()
-                .map(|arg| Rc::clone(&arg.typing))
-                .collect(),
-            return_type,
-        )))
+        Ok(Rc::new(Type::FunctionType(function_type_args, return_type)))
     } else {
         let mut branch_types = HashSet::new();
         for (destructuring, expression) in &current_function.bodies {
@@ -301,12 +299,12 @@ pub fn infer_function_type(
                         }
                         let variant = variant.unwrap();
                         match variant {
-                            super::TypeVariant::Constant(name) => {
+                            TypeVariant::Constant(name) => {
                                 if destructuring.1.len() != 0 {
                                     return Err(format!("Variant '{name}' for type '{}' expects 0 components but got {} in function '{function_name}'", arg.typing.name(), destructuring.1.len()));
                                 }
                             }
-                            super::TypeVariant::Cartesian(name, items) => {
+                            TypeVariant::Cartesian(name, items) => {
                                 if items.len() != destructuring.1.len() {
                                     return Err(format!("Variant '{name}' for type '{}' expects {} components but got {} in function '{function_name}'", arg.typing.name(), items.len(), destructuring.1.len()));
                                 }
@@ -348,13 +346,19 @@ pub fn infer_function_type(
             (1, true) => Err(format!(
                 "Cannot infer type of function {function_name}, possibly infinite recursion?"
             )),
-            (1, false) => Ok(branch_types.iter().next().unwrap().clone()),
-            (2, true) => Ok(branch_types
-                .into_iter()
-                .filter(|t| t.is_unknown())
-                .next()
-                .unwrap()
-                .clone()),
+            (1, false) => Ok(Rc::new(Type::FunctionType(
+                function_type_args,
+                branch_types.iter().next().unwrap().clone(),
+            ))),
+            (2, true) => Ok(Rc::new(Type::FunctionType(
+                function_type_args,
+                branch_types
+                    .into_iter()
+                    .filter(|t| !t.is_unknown())
+                    .next()
+                    .unwrap()
+                    .clone(),
+            ))),
             //todo: for N types, as long as none is Unknown, we need to check what's the supertype of all of them (common ancestor in hierarchy tree)
             _ => Err(format!(
                 "Function '{function_name}' has matched patterns with different types: {:?}",
