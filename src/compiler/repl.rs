@@ -16,7 +16,7 @@ use super::type_system::TypeInfo;
 
 #[derive(Clone, Debug)]
 enum Value {
-    Typed(String, String, Vec<Rc<Value>>),
+    Typed(Rc<String>, Rc<String>, Vec<Rc<Value>>),
     Num(i64),
     Bool(bool),
     Function(Rc<FunctionDefinition>),
@@ -125,7 +125,7 @@ impl REPL {
             for (name, definition) in types {
                 println!("Defined type {}", name);
 
-                self.type_info.add_user_type(name.clone(), &definition);
+                self.type_info.add_user_type(Rc::clone(&name), &definition);
                 self.program.types.insert(name, definition);
             }
             for key in functions.keys() {
@@ -236,7 +236,7 @@ impl REPL {
                                 (DestructuringComponent::Identifier(i), _) if i.as_str() == "_" => {
                                 }
                                 (DestructuringComponent::Identifier(i), Value::Typed(_, _, _)) => {
-                                    bindings.insert(i.clone(), value.clone());
+                                    bindings.insert(Rc::clone(i), Rc::clone(value));
                                 }
                                 (DestructuringComponent::Number(x), Value::Num(y)) => {
                                     if x != y {
@@ -244,7 +244,7 @@ impl REPL {
                                     }
                                 }
                                 (DestructuringComponent::Identifier(i), Value::Num(_)) => {
-                                    bindings.insert(i.clone(), value.clone());
+                                    bindings.insert(Rc::clone(i), Rc::clone(value));
                                 }
                                 (DestructuringComponent::Identifier(x), Value::Bool(y)) => {
                                     if (x.as_str() == "true" && !y)
@@ -252,7 +252,7 @@ impl REPL {
                                     {
                                         return Ok(PatternMatchResult::no_match());
                                     }
-                                    bindings.insert(x.clone(), value.clone());
+                                    bindings.insert(Rc::clone(x), Rc::clone(value));
                                 }
                                 _ => return Err("Unsupported".to_string()),
                             }
@@ -434,24 +434,24 @@ impl REPL {
                     let arg_name = &definition.arguments[i].identifier;
                     let arg_type = &definition.arguments[i].typing;
                     match value.as_ref() {
-                        Value::Typed(name, variant, values) => {
+                        Value::Typed(name, variant, _) => {
                             match arg_type.as_ref() {
                                 Type::SimpleType(simple_type) => {
-                                    if simple_type.as_str() != name {
+                                    if simple_type != name {
                                         return Err(format!("Argument '{}' in function '{}' has type '{}' but '{}' was provided", arg_name, function_call.name, arg_type.name(), simple_type));
                                     }
                                     if !self.program.types.contains_key(simple_type) {
                                         return Err(format!("Type '{simple_type}' is not defined"));
                                     }
                                     let definition = self.program.types.get(simple_type).unwrap();
-                                    if !definition.variants.contains_key(variant) {
+                                    if !definition.variants.contains_key(variant.as_ref()) {
                                         return Err(format!("Argument '{arg_name}' in function call '{}' has undefined variant '{variant}' for type '{simple_type}'", function_call.name));
                                     }
                                 }
                                 //todo: should track that the same type is bound to the same type parameter
-                                Type::TypeParameter(name) => {}
-                                Type::ParametrizedType(name, items) => {}
-                                Type::FunctionType(items, _) => {
+                                Type::TypeParameter(_) => {}
+                                Type::ParametrizedType(_, _) => {}
+                                Type::FunctionType(_, _) => {
                                     panic!("What to do 2")
                                 }
                                 Type::Unknown => {
@@ -502,7 +502,7 @@ impl REPL {
                             ))
                         }
                     };
-                    arg_values.insert(arg_name.clone(), value.clone());
+                    arg_values.insert(Rc::clone(arg_name), Rc::clone(&value));
                     ordered_arg_values.push(value);
                 }
 
@@ -520,7 +520,7 @@ impl REPL {
                     if result.is_match {
                         let mut bindings = arg_values.clone();
                         for (k, v) in &result.bindings {
-                            bindings.insert(k.clone(), v.clone());
+                            bindings.insert(Rc::clone(k), Rc::clone(v));
                         }
                         return self.evaluate_expression(&bindings, expression);
                     }
@@ -552,11 +552,11 @@ impl REPL {
                 }
 
                 let type_definition = self.program.types.get(name).unwrap();
-                if !type_definition.variants.contains_key(variant) {
+                if !type_definition.variants.contains_key(variant.as_ref()) {
                     return Err(format!("Type '{name}' doesn't have variant '{variant}'"));
                 }
 
-                let type_variant = type_definition.variants.get(variant).unwrap();
+                let type_variant = type_definition.variants.get(variant.as_ref()).unwrap();
                 let arg_num = match type_variant {
                     TypeVariant::Constant(_) => 0,
                     TypeVariant::Cartesian(_, items) => items.len(),
@@ -606,7 +606,7 @@ impl REPL {
                         _ => panic!("not possible"),
                     };
                 }
-                Ok(Rc::new(Value::Typed(name.clone(), variant.clone(), values)))
+                Ok(Rc::new(Value::Typed(Rc::clone(name), Rc::clone(variant), values)))
             }
             Expression::FunctionCall(function_call) => {
                 self.evaluate_function_call(function_call, identifier_values)
@@ -618,7 +618,7 @@ impl REPL {
                     if result.is_err() {
                         return result;
                     }
-                    bindings.insert(identifier.clone(), result.unwrap());
+                    bindings.insert(Rc::clone(identifier), Rc::clone(&result.unwrap()));
                 }
                 return self.evaluate_expression(&bindings, expression);
             }

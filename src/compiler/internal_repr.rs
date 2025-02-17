@@ -37,9 +37,9 @@ impl Type {
 
     pub fn name(&self) -> Rc<String> {
         match self {
-            Type::SimpleType(name) => name.clone(),
-            Type::TypeParameter(name) => name.clone(),
-            Type::ParametrizedType(name, _) => name.clone(),
+            Type::SimpleType(name) => Rc::clone(name),
+            Type::TypeParameter(name) => Rc::clone(name),
+            Type::ParametrizedType(name, _) => Rc::clone(name),
             Type::FunctionType(inputs, output) => Rc::new(format!(
                 "({}) -> {}",
                 inputs
@@ -56,7 +56,7 @@ impl Type {
     pub fn type_parameters(&self) -> HashSet<Rc<String>> {
         match self {
             Type::SimpleType(_) => HashSet::new(),
-            Type::TypeParameter(param) => HashSet::from([param.clone()]),
+            Type::TypeParameter(param) => HashSet::from([Rc::clone(param)]),
             Type::ParametrizedType(_, vec) => {
                 let mut parameters = HashSet::new();
                 for t in vec {
@@ -112,7 +112,7 @@ pub(super) struct FunctionCall {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) enum Expression {
-    TypeConstructor(String, String, Vec<Expression>),
+    TypeConstructor(Rc<String>, Rc<String>, Vec<Expression>),
     FunctionCall(FunctionCall),
     Identifier(String),
     Number(i64),
@@ -345,8 +345,8 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
                 }
             }
             Ok(Expression::TypeConstructor(
-                ast.matched[0].unwrap_str(),
-                ast.matched[2].unwrap_str(),
+                Rc::new(ast.matched[0].unwrap_str()),
+                Rc::new(ast.matched[2].unwrap_str()),
                 parameters,
             ))
         }

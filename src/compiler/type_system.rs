@@ -92,7 +92,7 @@ fn infer_expression_type(
                 ))
             } else {
                 let definition = result.unwrap();
-                if !definition.variants.contains_key(variant) {
+                if !definition.variants.contains_key(variant.as_ref()) {
                     Err(format!("Undefined variant '{variant}' for type '{type_name}' in function '{function_name}'"))
                 } else {
                     //todo: should use inferred types of expressions in vec to concretized type parameters
@@ -156,7 +156,7 @@ fn infer_expression_type(
                 if result.is_err() {
                     return result;
                 }
-                inner_types.insert(identifier.clone(), result.unwrap());
+                inner_types.insert(Rc::clone(identifier), Rc::clone(&result.unwrap()));
             }
             infer_expression_type(
                 program,
@@ -250,7 +250,7 @@ pub fn infer_function_type(
 ) -> Result<Rc<Type>, String> {
     let mut arg_types = HashMap::new();
     for (constant, _type) in &type_info.constant_types {
-        arg_types.insert(constant.clone(), _type.clone());
+        arg_types.insert(Rc::clone(constant), Rc::clone(_type));
     }
     for argument in &current_function.arguments {
         match &argument.typing.as_ref() {
@@ -280,7 +280,7 @@ pub fn infer_function_type(
             }
         }
 
-        arg_types.insert(argument.identifier.clone(), Rc::clone(&argument.typing));
+        arg_types.insert(Rc::clone(&argument.identifier), Rc::clone(&argument.typing));
     }
 
     let function_name = &current_function.name;
@@ -314,7 +314,7 @@ pub fn infer_function_type(
         for (destructuring, expression) in &current_function.bodies {
             let mut identifier_types = HashMap::new();
             for (k, v) in &arg_types {
-                identifier_types.insert(k.clone(), v.clone());
+                identifier_types.insert(Rc::clone(k), Rc::clone(v));
             }
 
             let mut i = 0;
@@ -325,8 +325,8 @@ pub fn infer_function_type(
                         if identifier.as_str() != "_" =>
                     {
                         identifier_types.insert(
-                            identifier.clone(),
-                            arg_types.get(&arg.identifier).unwrap().clone(),
+                            Rc::clone(identifier),
+                            Rc::clone(arg_types.get(&arg.identifier).unwrap()),
                         );
                     }
                     //todo: don't do this twice in repl maybe?
@@ -357,7 +357,7 @@ pub fn infer_function_type(
                                             if identifier.as_str() != "_" =>
                                         {
                                             identifier_types
-                                                .insert(identifier.clone(), Rc::clone(&items[k]));
+                                                .insert(Rc::clone(identifier), Rc::clone(&items[k]));
                                         }
                                         _ => {}
                                     }
@@ -390,16 +390,15 @@ pub fn infer_function_type(
             )),
             (1, false) => Ok(Rc::new(Type::FunctionType(
                 function_type_args,
-                branch_types.iter().next().unwrap().clone(),
+                Rc::clone(branch_types.iter().next().unwrap()),
             ))),
             (2, true) => Ok(Rc::new(Type::FunctionType(
                 function_type_args,
-                branch_types
+                Rc::clone(&branch_types
                     .into_iter()
                     .filter(|t| !t.is_unknown())
                     .next()
-                    .unwrap()
-                    .clone(),
+                    .unwrap()),
             ))),
             //todo: for N types, as long as none is Unknown, we need to check what's the supertype of all of them (common ancestor in hierarchy tree)
             _ => Err(format!(
