@@ -1,10 +1,11 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
 
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::infer_function_type;
 use crate::parser::combinators::ParserCombinator;
+use crate::utils::InsertionOrderHashMap;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::internal_repr::{
@@ -95,7 +96,7 @@ impl REPL {
     pub fn new() -> Self {
         Self {
             program: Program {
-                functions: BTreeMap::new(),
+                functions: InsertionOrderHashMap::new(),
                 types: HashMap::new(),
             },
             type_info: TypeInfo::new(),
@@ -128,7 +129,8 @@ impl REPL {
                 self.type_info.add_user_type(name.clone(), &definition);
                 self.program.types.insert(name, definition);
             }
-            for (name, definition) in functions {
+            for key in functions.keys() {
+                let (name, definition) = (key, functions.get(key.as_ref()).unwrap());
                 let result = infer_function_type(&self.program, &self.type_info, &definition);
                 if result.is_err() {
                     println!("ERROR: {}", result.unwrap_err());
@@ -402,7 +404,7 @@ impl REPL {
                     match function_value.unwrap().as_ref() {
                         Value::Function(function_definition) => {
                             definition = function_definition;
-                        },
+                        }
                         _ => {
                             return Err(format!("'{}' is not a function", function_call.name));
                         }

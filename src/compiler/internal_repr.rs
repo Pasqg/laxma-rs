@@ -1,10 +1,10 @@
 use core::panic;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     rc::Rc,
 };
 
-use crate::parser::{ast::AST, token_stream::Token};
+use crate::{parser::{ast::AST, token_stream::Token}, utils::InsertionOrderHashMap};
 
 use super::grammar::Rules;
 
@@ -136,7 +136,7 @@ impl FunctionDefinition {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct Program {
-    pub(super) functions: BTreeMap<Rc<String>, FunctionDefinition>,
+    pub(super) functions: InsertionOrderHashMap<String, FunctionDefinition>,
     pub(super) types: HashMap<Rc<String>, TypeDefinition>,
 }
 
@@ -532,7 +532,7 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
         return Err(format!("Expected a Program AST but got {:?}", ast.id));
     }
 
-    let mut functions = BTreeMap::new();
+    let mut functions = InsertionOrderHashMap::new();
     let mut types = HashMap::new();
     for node in &ast.children {
         match node.id {
@@ -543,7 +543,7 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
                 }
 
                 let (name, definition) = result.unwrap();
-                functions.insert(Rc::new(name), definition);
+                functions.insert(name, definition);
             }
             Some(Rules::TypeDef) => {
                 let result = type_definition_repr(node);
