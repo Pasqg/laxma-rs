@@ -199,3 +199,35 @@ fn factorial x:Int =
     0 -> 1
     n -> *(n factorial(-(n 1)))
 ```
+
+### Function operations
+
+Functions can be passed as function parameters or returned by another function.
+
+```rust
+fn compose f:('P) -> 'Q g:('Q)->'R x:'P -> f(g(x))
+```
+
+When resolving function calls, function arguments have precedence over user defined functions and built-ins. In other words, function arguments shadow the caller scope.
+
+#### Lambdas
+
+An anonymous function can be created as such:
+
+```rust
+fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))
+```
+
+Lambdas capture the outside environment in the same way as inner expression get outer bindings
+
+```rust
+fn quick_sort x : IntList =
+    Empty -> empty ( )
+    List pivot xs ->
+        //  here pivot is captured in the lambdas
+        with smaller = ( x : Int ) -> < ( x pivot )
+            bigger = ( x : Int ) -> >= ( x pivot )
+            left = filter ( smaller xs )
+            right = filter ( bigger xs )
+            concat ( quick_sort ( left ) concat ( list ( pivot ) quick_sort ( right ) ) )
+```

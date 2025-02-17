@@ -19,7 +19,7 @@ enum Value {
     Typed(String, String, Vec<Rc<Value>>),
     Num(i64),
     Bool(bool),
-    Function(FunctionDefinition),
+    Function(Rc<FunctionDefinition>),
     Void,
 }
 
@@ -390,10 +390,8 @@ impl REPL {
                 Ok(Rc::new(Value::Void))
             }
             _ => {
-                let definition;
-                if self.program.functions.contains_key(&function_call.name) {
-                    definition = self.program.functions.get(&function_call.name).unwrap();
-                } else {
+                let mut definition = self.program.functions.get(&function_call.name);
+                if definition.is_none() {
                     let function_value = identifier_values.get(&function_call.name);
                     if function_value.is_none() {
                         return Err(format!("Function '{}' is not defined", function_call.name));
@@ -401,14 +399,16 @@ impl REPL {
 
                     match function_value.unwrap().as_ref() {
                         Value::Function(function_definition) => {
-                            definition = function_definition;
+                            definition = Some(function_definition);
                         }
                         _ => {
                             return Err(format!("'{}' is not a function", function_call.name));
                         }
                     }
                 }
+                let definition = definition.unwrap();
 
+                //todo should be static checks
                 let expected_arg_num = definition.arguments.len();
                 let actual_arg_num = function_call.parameters.len();
                 if expected_arg_num != actual_arg_num {
@@ -429,6 +429,7 @@ impl REPL {
                     }
 
                     // Verify type matches
+                    // todo: move to type system
                     let value = result.unwrap();
                     let arg_name = &definition.arguments[i].identifier;
                     let arg_type = &definition.arguments[i].typing;
@@ -573,6 +574,7 @@ impl REPL {
 
                     values.push(result.unwrap());
                 }
+                //todo: in type system
                 if values.len() > 0 {
                     match type_variant {
                         TypeVariant::Cartesian(variant, items) => {
@@ -645,12 +647,15 @@ impl REPL {
 
                 let result = self.program.functions.get(identifier);
                 if result.is_some() {
-                    return Ok(Rc::new(Value::Function(result.unwrap().clone())));
+                    return Ok(Rc::new(Value::Function(Rc::clone(result.unwrap()))));
                 }
 
                 Err(format!("Unknown identifier '{}'", identifier))
             }
             Expression::Number(x) => Ok(Rc::new(Value::Num(x.to_owned()))),
+            Expression::LambdaExpression(function_definition) => {
+                Ok(Rc::new(Value::Function(Rc::clone(function_definition))))
+            }
         }
     }
 }

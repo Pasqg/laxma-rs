@@ -8,7 +8,6 @@ pub enum Rules {
     String,
     Number,
     Identifier,
-    TypeName,
     TypeParameter,
     ParametrizedType,
     FunctionType,
@@ -21,6 +20,7 @@ pub enum Rules {
     Expression,
     WithBlock,
     IfExpression,
+    LambdaExpression,
 
     TypeDef,
     FunctionSignature,
@@ -40,7 +40,7 @@ fn identifier() -> Combinators<Rules> {
     exclude(
         Combinators::MatchRegex(MatchRegex::new(
             Some(Rules::Identifier),
-            r"[a-zA-Z?_\+\-\*\/:><=][a-zA-Z?_\+\-\*\/:0-9]*",
+            r"[a-zA-Z?_\+\-\*\/:><=\^][a-zA-Z?_\+\-\*\/:0-9\^=]*",
         )),
         or_match_flat(vec![slit("fn"), slit("type")]),
     )
@@ -178,9 +178,18 @@ pub fn expression_parser() -> Combinators<Rules> {
         )
     };
 
+    let lambda_expression = || and_match(Rules::LambdaExpression, vec![
+        slit("("),
+        many(Some(Rules::Arguments), argument(), None),
+        slit(")"),
+        slit("->"),
+        expression.clone(),
+    ]);
+
     let expression_body = or_match(
         Rules::Expression,
         vec![
+            lambda_expression(),
             with_expression(),
             if_expression(),
             function_call(),

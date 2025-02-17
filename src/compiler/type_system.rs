@@ -12,6 +12,7 @@ use super::internal_repr::{
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<String>,
     pub(super) user_types: HashMap<Rc<String>, Rc<Type>>,
+    //todo: function_types and constant_types could be part of the same map
     pub(super) function_types: HashMap<Rc<String>, Rc<Type>>,
     pub(super) constant_types: HashMap<Rc<String>, Rc<Type>>,
 }
@@ -236,6 +237,9 @@ fn infer_expression_type(
             }
         }
         Expression::Number(_) => Ok(Rc::new(Type::SimpleType(Rc::new("Int".to_string())))),
+        Expression::LambdaExpression(function_definition) => {
+            infer_function_type(program, type_info, &function_definition)
+        }
     }
 }
 

@@ -4,7 +4,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::{parser::{ast::AST, token_stream::Token}, utils::InsertionOrderHashMap};
+use crate::{
+    parser::{ast::AST, token_stream::Token},
+    utils::InsertionOrderHashMap,
+};
 
 use super::grammar::Rules;
 
@@ -101,13 +104,13 @@ pub(super) enum DestructuringComponent {
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub(super) struct Destructuring(pub(super) String, pub(super) Vec<DestructuringComponent>);
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionCall {
     pub(super) name: String,
     pub(super) parameters: Vec<Expression>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) enum Expression {
     TypeConstructor(String, String, Vec<Expression>),
     FunctionCall(FunctionCall),
@@ -115,6 +118,7 @@ pub(super) enum Expression {
     Number(i64),
     WithBlock(Vec<(Rc<String>, Expression)>, Rc<Expression>),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
+    LambdaExpression(Rc<FunctionDefinition>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -143,7 +147,7 @@ impl FunctionDefinition {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct Program {
-    pub(super) functions: InsertionOrderHashMap<String, FunctionDefinition>,
+    pub(super) functions: InsertionOrderHashMap<String, Rc<FunctionDefinition>>,
     pub(super) types: HashMap<Rc<String>, TypeDefinition>,
 }
 
@@ -253,6 +257,31 @@ fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
     };
 }
 
+fn arguments_repr(ast: &AST<Rules>) -> Result<Vec<FunctionArgument>, String> {
+    let mut arguments = Vec::new();
+    match ast.id {
+        None => {}
+        Some(Rules::Argument) => {
+            let result = argument_repr(ast);
+            if result.is_err() {
+                return Err(result.unwrap_err());
+            }
+            arguments.push(result.unwrap());
+        }
+        Some(Rules::Arguments) => {
+            for child in &ast.children {
+                let result = argument_repr(child);
+                if result.is_err() {
+                    return Err(result.unwrap_err());
+                }
+                arguments.push(result.unwrap());
+            }
+        }
+        _ => panic!("Expected None, Argument or Arguments but got {:?}", ast.id),
+    }
+    Ok(arguments)
+}
+
 fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::FunctionSignature {
         return Err(format!(
@@ -262,33 +291,17 @@ fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), S
     }
 
     let function_name = ast.matched[1].unwrap_str();
-    let mut arguments = Vec::new();
 
     if ast.children.len() > 2 {
-        let node = &ast.children[2];
-        match node.id {
-            None => {}
-            Some(Rules::Argument) => {
-                let result = argument_repr(ast);
-                if result.is_err() {
-                    return Err(result.unwrap_err());
-                }
-                arguments.push(result.unwrap());
-            }
-            Some(Rules::Arguments) => {
-                for child in &node.children {
-                    let result = argument_repr(child);
-                    if result.is_err() {
-                        return Err(result.unwrap_err());
-                    }
-                    arguments.push(result.unwrap());
-                }
-            }
-            _ => panic!("Expected None, Argument or Arguments but got {:?}", node.id),
+        let result = arguments_repr(&ast.children[2]);
+        if result.is_err() {
+            return Err(result.unwrap_err());
         }
-    }
 
-    Ok((function_name, arguments))
+        Ok((function_name, result.unwrap()))
+    } else {
+        Ok((function_name, Vec::new()))
+    }
 }
 
 pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
@@ -372,6 +385,41 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
                 Rc::new(true_branch.unwrap()),
                 Rc::new(false_branch.unwrap()),
             ))
+        }
+        Some(Rules::LambdaExpression) => {
+            let result = arguments_repr(&body.children[1]);
+            if result.is_err() {
+                return Err(format!(
+                    "Error in lambda arguments: {}",
+                    result.unwrap_err()
+                ));
+            }
+            let args = result.unwrap();
+
+            let result = expression_repr(&body.children[4]);
+            if result.is_err() {
+                return Err(format!(
+                    "Error in lambda return expression: {}",
+                    result.unwrap_err()
+                ));
+            }
+            let expr = result.unwrap();
+
+            Ok(Expression::LambdaExpression(Rc::new(FunctionDefinition {
+                name: body
+                    .matched
+                    .iter()
+                    .map(|t| t.unwrap_str())
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                arguments: args,
+                bodies: vec![(
+                    Pattern {
+                        components: Vec::new(),
+                    },
+                    expr,
+                )],
+            })))
         }
         _ => Err(format!(
             "Expected WithExpression, IfExpression, FunctionCall, Identifier or Number, but got {}",
@@ -550,7 +598,7 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
                 }
 
                 let (name, definition) = result.unwrap();
-                functions.insert(name, definition);
+                functions.insert(name, Rc::new(definition));
             }
             Some(Rules::TypeDef) => {
                 let result = type_definition_repr(node);
