@@ -157,7 +157,7 @@ impl REPL {
                     &result.unwrap(),
                 );
                 if result.is_ok() {
-                    println!("{}", result.unwrap());
+                    //println!("{}", result.unwrap());
                 } else {
                     println!("ERROR: {}", result.unwrap_err());
                 }
@@ -185,7 +185,6 @@ impl REPL {
             let element = &pattern.components[i];
             let arg = &args[i];
             match element {
-                // Should also add binding of identifier to value!
                 DestructuringComponent::Identifier(identifier) => match arg.as_ref() {
                     Value::Typed(name, variant, values) => {
                         if identifier.as_str() != "_" {
@@ -429,7 +428,7 @@ impl REPL {
                     }
 
                     // Verify type matches
-                    // todo: move to type system
+                    // todo: move to type system, this is about 10% of evaluation
                     let value = result.unwrap();
                     let arg_name = &definition.arguments[i].identifier;
                     let arg_type = &definition.arguments[i].typing;
@@ -547,24 +546,6 @@ impl REPL {
     ) -> Result<Rc<Value>, String> {
         match expression {
             Expression::TypeConstructor(name, variant, expressions) => {
-                if !self.type_info.user_types.contains_key(name) {
-                    return Err(format!("Type '{name}' is not defined"));
-                }
-
-                let type_definition = self.program.types.get(name).unwrap();
-                if !type_definition.variants.contains_key(variant.as_ref()) {
-                    return Err(format!("Type '{name}' doesn't have variant '{variant}'"));
-                }
-
-                let type_variant = type_definition.variants.get(variant.as_ref()).unwrap();
-                let arg_num = match type_variant {
-                    TypeVariant::Constant(_) => 0,
-                    TypeVariant::Cartesian(_, items) => items.len(),
-                };
-                if arg_num != expressions.len() {
-                    return Err(format!("Variant '{variant}' of type '{name}' expects {arg_num} arguments but constructor provided {}", expressions.len()));
-                }
-
                 let mut values = Vec::new();
                 for expr in expressions {
                     let result = self.evaluate_expression(identifier_values, expr);
@@ -574,38 +555,7 @@ impl REPL {
 
                     values.push(result.unwrap());
                 }
-                //todo: in type system
-                if values.len() > 0 {
-                    match type_variant {
-                        TypeVariant::Cartesian(variant, items) => {
-                            for i in 0..values.len() {
-                                match (values[i].as_ref(), items[i].as_ref()) {
-                                    (Value::Typed(provided, _, _), Type::SimpleType(expected)) => {
-                                        if expected.as_str() != provided.as_str() {
-                                            return Err(format!("Expected '{expected}' in parameter {i} for {name}::{variant} but got '{provided}'"));
-                                        }
-                                    }
-                                    (Value::Num(_), Type::SimpleType(type_name)) => {
-                                        if type_name.as_str() != "Int" {
-                                            return Err(format!("Expected '{type_name}' in parameter {i} for {name}::{variant} but got 'Int'"));
-                                        }
-                                    }
-                                    (Value::Bool(_), Type::SimpleType(type_name)) => {
-                                        if type_name.as_str() != "Bool" {
-                                            return Err(format!("Expected '{type_name}' in parameter {i} for {name}::{variant} but got 'Bool'"));
-                                        }
-                                    }
-                                    _ => {
-                                        return Err(format!(
-                                            "Mismatching type in constructor for {name}::{variant}"
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                        _ => panic!("not possible"),
-                    };
-                }
+                
                 Ok(Rc::new(Value::Typed(Rc::clone(name), Rc::clone(variant), values)))
             }
             Expression::FunctionCall(function_call) => {

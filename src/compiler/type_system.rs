@@ -83,22 +83,53 @@ fn infer_expression_type(
     expression: &Expression,
 ) -> Result<Rc<Type>, String> {
     match expression {
-        Expression::TypeConstructor(type_name, variant, vec) => {
+        Expression::TypeConstructor(type_name, variant, expressions) => {
             let function_name = &current_function.name;
             let result = program.types.get(type_name);
             if result.is_none() {
-                Err(format!(
+                return Err(format!(
                     "Undefined type '{type_name}' in function '{function_name}'"
                 ))
-            } else {
-                let definition = result.unwrap();
-                if !definition.variants.contains_key(variant.as_ref()) {
-                    Err(format!("Undefined variant '{variant}' for type '{type_name}' in function '{function_name}'"))
-                } else {
-                    //todo: should use inferred types of expressions in vec to concretized type parameters
-                    Ok(Rc::clone(&result.unwrap().def))
-                }
             }
+
+            let definition = result.unwrap();
+
+            let type_variant = definition.variants.get(variant.as_ref());
+            if type_variant.is_none() {
+                return Err(format!("Undefined variant '{variant}' for type '{type_name}' in function '{function_name}'"))
+            }
+            let type_variant = type_variant.unwrap();
+
+            let arg_num = match type_variant {
+                TypeVariant::Constant(_) => 0,
+                TypeVariant::Cartesian(_, items) => items.len(),
+            };
+            if arg_num != expressions.len() {
+                return Err(format!("Variant '{variant}' of type '{type_name}' expects {arg_num} arguments but constructor provided {}", expressions.len()));
+            }
+
+            if expressions.len() > 0 {
+                match type_variant {
+                    TypeVariant::Cartesian(variant, items) => {
+                        for i in 0..expressions.len() {
+                            let expression_type = infer_expression_type(program, type_info, identifier_types, current_function, &expressions[i]);
+                            if expression_type.is_err() {
+                                return expression_type;
+                            }
+
+                            if expression_type.unwrap() != items[i] {
+                                return Err(format!(
+                                    "Mismatching type in constructor for {type_name}::{variant}"
+                                ));
+                            }
+                        }
+                    }
+                    _ => panic!("not possible"),
+                };
+            }
+
+            //todo: should use inferred types of expressions in vec to concretized type parameters
+            Ok(Rc::clone(&result.unwrap().def))
         }
         Expression::FunctionCall(function_call) => {
             let function_type = type_info.function_types.get(&function_call.name);
