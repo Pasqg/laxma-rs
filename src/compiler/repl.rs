@@ -136,17 +136,14 @@ impl REPL {
                     println!("ERROR: {}", result.unwrap_err());
                 } else {
                     let function_type = result.unwrap();
-                    let return_type = match function_type.as_ref() {
-                        Type::FunctionType(_, return_type) => Rc::clone(return_type),
-                        _ => {
-                            println!("ERROR: Expected function type but got {}", function_type.name());
-                            return;
-                        }
-                    };
                     println!("Defined function {}: {}", name, function_type.name());
 
-                    self.program.functions.insert(name.clone(), definition);
-                    self.type_info.function_return_types.insert(name, return_type);
+                    self.program
+                        .functions
+                        .insert(name.to_string(), definition.to_owned());
+                    self.type_info
+                        .function_types
+                        .insert(Rc::clone(name), function_type);
                 }
             }
         } else {
@@ -476,9 +473,10 @@ impl REPL {
                         },
                         Value::Function(def) => match arg_type.as_ref() {
                             Type::FunctionType(_, _) => {
-                                let function_type = infer_function_type(&self.program, &self.type_info, def);
+                                let function_type =
+                                    infer_function_type(&self.program, &self.type_info, def);
                                 if function_type.is_err() {
-                                   return Err(function_type.unwrap_err()); 
+                                    return Err(function_type.unwrap_err());
                                 }
                                 let function_type = function_type.unwrap();
 
@@ -487,9 +485,10 @@ impl REPL {
                                 }
                             }
                             _ => {
-                                let function_type = infer_function_type(&self.program, &self.type_info, def);
+                                let function_type =
+                                    infer_function_type(&self.program, &self.type_info, def);
                                 if function_type.is_err() {
-                                   return Err(function_type.unwrap_err()); 
+                                    return Err(function_type.unwrap_err());
                                 }
                                 let function_type = function_type.unwrap();
 

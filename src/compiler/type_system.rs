@@ -12,7 +12,7 @@ use super::internal_repr::{
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<String>,
     pub(super) user_types: HashMap<Rc<String>, Rc<Type>>,
-    pub(super) function_return_types: HashMap<Rc<String>, Rc<Type>>,
+    pub(super) function_types: HashMap<Rc<String>, Rc<Type>>,
     pub(super) constant_types: HashMap<Rc<String>, Rc<Type>>,
 }
 
@@ -39,7 +39,7 @@ impl TypeInfo {
         Self {
             primitive_types,
             user_types: HashMap::new(),
-            function_return_types: HashMap::from([
+            function_types: HashMap::from([
                 (
                     Rc::new("print".to_string()),
                     Rc::new(Type::FunctionType(
@@ -100,9 +100,9 @@ fn infer_expression_type(
             }
         }
         Expression::FunctionCall(function_call) => {
-            let function_type = type_info.function_return_types.get(&function_call.name);
+            let function_type = type_info.function_types.get(&function_call.name);
             if function_type.is_some() {
-                Ok(Rc::clone(function_type.unwrap()))
+                Ok(function_type.unwrap().as_return_type())
             } else if current_function.name == function_call.name {
                 Ok(Rc::new(Type::Unknown))
             } else {
@@ -139,9 +139,9 @@ fn infer_expression_type(
                     };
                 }
 
-                let builtin = type_info.function_return_types.get(&function_call.name);
+                let builtin = type_info.function_types.get(&function_call.name);
                 if builtin.is_some() {
-                    return Ok(builtin.unwrap().to_owned());
+                    return Ok(builtin.unwrap().as_return_type());
                 }
 
                 Err(format!("Function '{}' was not defined", function_call.name))

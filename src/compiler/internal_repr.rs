@@ -25,6 +25,13 @@ impl Type {
         }
     }
 
+    pub fn as_return_type(&self) -> Rc<Type> {
+        match self {
+            Type::FunctionType(_, return_type) => Rc::clone(return_type),
+            _ => panic!("Not a function type: '{:?}'", self),
+        }
+    }
+
     pub fn name(&self) -> Rc<String> {
         match self {
             Type::SimpleType(name) => name.clone(),
