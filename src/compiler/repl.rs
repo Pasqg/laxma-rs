@@ -111,7 +111,6 @@ impl REPL {
         let mut result = grammar::program_parser().parse(&tokens);
         if !result.result || result.remaining.not_done() {
             result = grammar::expression_parser().parse(&tokens);
-            println!("{:?}", result);
         }
 
         if !result.result || result.remaining.not_done() {
@@ -528,8 +527,13 @@ impl REPL {
 
                 //todo: should be caught at compile time
                 Err(format!(
-                    "Non-exhaustive patterns in function '{}'",
-                    function_call.name
+                    "Non-exhaustive patterns in function '{}' for values: {}",
+                    function_call.name,
+                    ordered_arg_values
+                        .iter()
+                        .map(|v| v.value_to_str().unwrap())
+                        .collect::<Vec<String>>()
+                        .join(", "),
                 ))
             }
         }
@@ -634,7 +638,6 @@ impl REPL {
                 }
             }
             Expression::Identifier(identifier) => {
-                
                 let result = identifier_values.get(identifier);
                 if result.is_some() {
                     return Ok(Rc::clone(result.unwrap()));
@@ -644,11 +647,8 @@ impl REPL {
                 if result.is_some() {
                     return Ok(Rc::new(Value::Function(result.unwrap().clone())));
                 }
-               
-                 Err(format!(
-                    "Unknown identifier '{}'  | {:?}",
-                    identifier, identifier_values
-                ))
+
+                Err(format!("Unknown identifier '{}'", identifier))
             }
             Expression::Number(x) => Ok(Rc::new(Value::Num(x.to_owned()))),
         }

@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use std::fs::{metadata, read_dir};
+use std::time::Instant;
 
 use compiler::repl::REPL;
 
@@ -45,7 +46,9 @@ fn main() {
             return;
         }
         if !input.starts_with("/load ") {
+            let start = Instant::now();
             repl.handle_input(input);
+            println!("Done in {}ms", start.elapsed().as_millis());
             continue;
         }
 
