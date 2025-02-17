@@ -6,6 +6,7 @@ use compiler::repl::REPL;
 mod compiler;
 mod parser;
 mod recur;
+mod utils;
 
 fn load_file(repl: &mut REPL, file_name: &str) {
     let file = std::fs::File::open(file_name);
