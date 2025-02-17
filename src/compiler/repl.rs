@@ -334,7 +334,7 @@ impl REPL {
                     _ => panic!("Unhandled arithmetic function {}", function_call.name),
                 }
             }
-            ">" | "<" | "==" => {
+            ">" | "<" | "==" | ">=" | "<=" => {
                 if function_call.parameters.len() != 2 {
                     return Err(format!(
                         "Function '{}' requires 2 parameters but got '{}'",
@@ -369,7 +369,9 @@ impl REPL {
 
                 match function_call.name.as_str() {
                     ">" => Ok(Rc::new(Value::Bool(left > right))),
+                    ">=" => Ok(Rc::new(Value::Bool(left >= right))),
                     "<" => Ok(Rc::new(Value::Bool(left < right))),
+                    "<=" => Ok(Rc::new(Value::Bool(left <= right))),
                     "==" => Ok(Rc::new(Value::Bool(left == right))),
                     _ => panic!("Unhandled boolean function {}", function_call.name),
                 }

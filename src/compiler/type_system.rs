@@ -26,19 +26,36 @@ impl TypeInfo {
         ]);
         let bool_type = Rc::new(Type::SimpleType(Rc::new("Bool".to_string())));
         let void_type = Rc::new(Type::SimpleType(Rc::new("Void".to_string())));
+
         let int_type = Rc::new(Type::SimpleType(Rc::new("Int".to_string())));
+        let binary_int_type = Rc::new(Type::FunctionType(
+            vec![Rc::clone(&int_type), Rc::clone(&int_type)],
+            Rc::clone(&int_type),
+        ));
+        let int_comparison_type = Rc::new(Type::FunctionType(
+            vec![Rc::clone(&int_type), Rc::clone(&int_type)],
+            Rc::clone(&bool_type),
+        ));
         Self {
             primitive_types,
             user_types: HashMap::new(),
             function_return_types: HashMap::from([
-                (Rc::new("print".to_string()), Rc::clone(&void_type)),
-                (Rc::new("+".to_string()), Rc::clone(&int_type)),
-                (Rc::new("-".to_string()), Rc::clone(&int_type)),
-                (Rc::new("*".to_string()), Rc::clone(&int_type)),
-                (Rc::new("/".to_string()), Rc::clone(&int_type)),
-                (Rc::new(">".to_string()), Rc::clone(&bool_type)),
+                (
+                    Rc::new("print".to_string()),
+                    Rc::new(Type::FunctionType(
+                        vec![Rc::new(Type::TypeParameter(Rc::new("'T".to_string())))],
+                        Rc::clone(&void_type),
+                    )),
+                ),
+                (Rc::new("+".to_string()), Rc::clone(&binary_int_type)),
+                (Rc::new("-".to_string()), Rc::clone(&binary_int_type)),
+                (Rc::new("*".to_string()), Rc::clone(&binary_int_type)),
+                (Rc::new("/".to_string()), Rc::clone(&binary_int_type)),
+                (Rc::new(">".to_string()), Rc::clone(&int_comparison_type)),
+                (Rc::new(">=".to_string()), Rc::clone(&int_comparison_type)),
                 (Rc::new("==".to_string()), Rc::clone(&bool_type)),
-                (Rc::new("<".to_string()), Rc::clone(&bool_type)),
+                (Rc::new("<".to_string()), Rc::clone(&int_comparison_type)),
+                (Rc::new("<=".to_string()), Rc::clone(&int_comparison_type)),
             ]),
             constant_types: HashMap::from([
                 (Rc::new("true".to_string()), Rc::clone(&bool_type)),
