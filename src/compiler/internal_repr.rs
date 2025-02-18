@@ -108,7 +108,7 @@ pub(super) struct TypeDefinition {
 pub(super) enum DestructuringComponent {
     Identifier(IdentifierId),
     Destructuring(Destructuring),
-    Number(i64),
+    Integer(i64),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
@@ -128,7 +128,7 @@ pub(super) enum Expression {
     TypeConstructor(IdentifierId, IdentifierId, Vec<Expression>),
     FunctionCall(FunctionCall),
     Identifier(IdentifierId),
-    Number(i64),
+    Integer(i64),
     WithBlock(Vec<(IdentifierId, Expression)>, Rc<Expression>),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
     LambdaExpression(Rc<FunctionDefinition>),
@@ -371,7 +371,7 @@ pub fn expression_repr(
         Some(Rules::Identifier) => Ok(Expression::Identifier(
             identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
         )),
-        Some(Rules::Number) => Ok(Expression::Number(
+        Some(Rules::Integer) => Ok(Expression::Integer(
             ast.matched[0].unwrap_str().parse::<i64>().unwrap(),
         )),
         Some(Rules::FunctionCall) => {
@@ -510,7 +510,7 @@ fn pattern_matching_repr(
                         }
                         DestructuringComponent::Destructuring(result.unwrap())
                     }
-                    Some(Rules::Number) => DestructuringComponent::Number(
+                    Some(Rules::Integer) => DestructuringComponent::Integer(
                         component.matched[0].unwrap_str().parse().unwrap(),
                     ),
                     _ => {

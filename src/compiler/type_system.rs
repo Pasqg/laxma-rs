@@ -303,7 +303,7 @@ fn infer_expression_type(
                 ))
             }
         }
-        Expression::Number(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
+        Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
         Expression::LambdaExpression(function_definition) => {
             infer_function_type(program, type_info, &function_definition)
         }

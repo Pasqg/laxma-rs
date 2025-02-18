@@ -21,7 +21,7 @@ use super::type_system::TypeInfo;
 #[derive(Clone, Debug)]
 enum Value {
     Typed(IdentifierId, IdentifierId, Vec<Rc<Value>>),
-    Num(i64),
+    Integer(i64),
     Bool(bool),
     Function(Rc<FunctionDefinition>),
     Void,
@@ -40,7 +40,7 @@ impl Display for Value {
                     .join(", ")
             ),
             Value::Function(_) => write!(f, "Function"),
-            Value::Num(n) => write!(f, "{n}"),
+            Value::Integer(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Void => write!(f, "Void"),
         }
@@ -70,7 +70,7 @@ impl Value {
                 ))
             }
             Value::Function(def) => Ok(format!("Function {}", id_to_name(&def.id))),
-            Value::Num(x) => Ok(format!("{x}")),
+            Value::Integer(x) => Ok(format!("{x}")),
             Value::Bool(x) => Ok(format!("{x}")),
             Value::Void => Ok("Void".to_string()),
         }
@@ -229,7 +229,7 @@ impl REPL {
                             }
                         }
                     }
-                    Value::Num(_) => {
+                    Value::Integer(_) => {
                         //todo: multiple "_" should also be considered wildcard
                         if *identifier != WILDCARD_ID {
                             return Err(format!("Redundant re-binding '{}' of numerical argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
@@ -274,12 +274,12 @@ impl REPL {
                                 (DestructuringComponent::Identifier(i), Value::Typed(_, _, _)) => {
                                     bindings.insert(*i, Rc::clone(value));
                                 }
-                                (DestructuringComponent::Number(x), Value::Num(y)) => {
+                                (DestructuringComponent::Integer(x), Value::Integer(y)) => {
                                     if x != y {
                                         return Ok(PatternMatchResult::no_match());
                                     }
                                 }
-                                (DestructuringComponent::Identifier(i), Value::Num(_)) => {
+                                (DestructuringComponent::Identifier(i), Value::Integer(_)) => {
                                     bindings.insert(*i, Rc::clone(value));
                                 }
                                 (DestructuringComponent::Identifier(x), Value::Bool(y)) => {
@@ -293,19 +293,19 @@ impl REPL {
                             }
                         }
                     }
-                    Value::Num(_) => return Err(format!("Cannot destructure Int")),
+                    Value::Integer(_) => return Err(format!("Cannot destructure Int")),
                     Value::Bool(_) => return Err(format!("Cannot destructure Bool")),
                     Value::Function(_) => return Err(format!("Cannot destructure Function")),
                     Value::Void => return Err(format!("Arg is Void")),
                 },
-                DestructuringComponent::Number(pattern_val) => match arg.as_ref() {
+                DestructuringComponent::Integer(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {
                         return Err(format!(
                             "Type '{}' cannot be matched to Int",
                             self.program.var_name(&id)
                         ));
                     }
-                    Value::Num(arg_val) => {
+                    Value::Integer(arg_val) => {
                         if pattern_val != arg_val {
                             return Ok(PatternMatchResult::no_match());
                         }
@@ -342,7 +342,7 @@ impl REPL {
                         return result;
                     }
                     match result.unwrap().as_ref() {
-                        Value::Num(x) => values.push(*x),
+                        Value::Integer(x) => values.push(*x),
                         _ => {
                             return Err(format!(
                                 "Argument {i} of function '{}' is not numeric",
@@ -353,16 +353,16 @@ impl REPL {
                     i += 1;
                 }
                 match function_call.id {
-                    ADD_ID => Ok(Rc::new(Value::Num(
+                    ADD_ID => Ok(Rc::new(Value::Integer(
                         values.into_iter().reduce(|acc, x| acc + x).unwrap(),
                     ))),
-                    SUB_ID => Ok(Rc::new(Value::Num(
+                    SUB_ID => Ok(Rc::new(Value::Integer(
                         values.into_iter().reduce(|acc, x| acc - x).unwrap(),
                     ))),
-                    MUL_ID => Ok(Rc::new(Value::Num(
+                    MUL_ID => Ok(Rc::new(Value::Integer(
                         values.into_iter().reduce(|acc, x| acc * x).unwrap(),
                     ))),
-                    DIV_ID => Ok(Rc::new(Value::Num(
+                    DIV_ID => Ok(Rc::new(Value::Integer(
                         values.into_iter().reduce(|acc, x| acc / x).unwrap(),
                     ))),
                     _ => panic!("Unhandled arithmetic function {}", function_call.id),
@@ -392,7 +392,7 @@ impl REPL {
                 let right = result.unwrap();
 
                 let (left, right) = match (left.as_ref(), right.as_ref()) {
-                    (Value::Num(x), Value::Num(y)) => (*x, *y),
+                    (Value::Integer(x), Value::Integer(y)) => (*x, *y),
                     (_, _) => {
                         return Err(format!(
                             "Arguments of '{}' are not numeric",
@@ -515,7 +515,7 @@ impl REPL {
                                 }
                             }
                         }
-                        Value::Num(_) => match arg_type.as_ref() {
+                        Value::Integer(_) => match arg_type.as_ref() {
                             Type::SimpleType(id) if *id == INT_ID => {}
                             _ => {
                                 return Err(format!("Argument '{}' in function '{}' has type 'Int' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
@@ -668,7 +668,7 @@ impl REPL {
                     self.program.var_name(identifier)
                 ))
             }
-            Expression::Number(x) => Ok(Rc::new(Value::Num(*x))),
+            Expression::Integer(x) => Ok(Rc::new(Value::Integer(*x))),
             Expression::LambdaExpression(function_definition) => {
                 Ok(Rc::new(Value::Function(Rc::clone(function_definition))))
             }

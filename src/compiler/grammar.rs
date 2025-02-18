@@ -6,7 +6,7 @@ use crate::parser::combinators::{
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub enum Rules {
     String,
-    Number,
+    Integer,
     Identifier,
     TypeParameter,
     ParametrizedType,
@@ -46,8 +46,8 @@ fn identifier() -> Combinators<Rules> {
     )
 }
 
-fn number() -> Combinators<Rules> {
-    Combinators::MatchRegex(MatchRegex::new(Some(Rules::Number), r"[0-9]+"))
+fn integer() -> Combinators<Rules> {
+    Combinators::MatchRegex(MatchRegex::new(Some(Rules::Integer), r"[0-9]+"))
 }
 
 fn basic_type_name() -> Combinators<Rules> {
@@ -195,7 +195,7 @@ pub fn expression_parser() -> Combinators<Rules> {
             function_call(),
             type_constructor(),
             identifier(),
-            number(),
+            integer(),
         ],
     );
     expression.bind(expression_body);
@@ -218,7 +218,7 @@ fn function_pattern_matching() -> Combinators<Rules> {
                     vec![
                         at_least_one(
                             None,
-                            or_match_flat(vec![destructuring(), identifier(), number()]),
+                            or_match_flat(vec![destructuring(), identifier(), integer()]),
                             Some(slit(",")),
                         ),
                         function_body(),
