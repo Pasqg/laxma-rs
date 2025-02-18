@@ -1,22 +1,26 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
+use std::time::Instant;
 
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::infer_function_type;
 use crate::parser::combinators::ParserCombinator;
-use crate::utils::InsertionOrderHashMap;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
+use super::identifier_map::{
+    IdentifierId, ADD_ID, BOOL_ID, DIV_ID, EQ_ID, FALSE_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID,
+    MUL_ID, PRINT_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
+};
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
-    Program, Type, TypeVariant,
+    Program, Type,
 };
 use super::type_system::TypeInfo;
 
 #[derive(Clone, Debug)]
 enum Value {
-    Typed(Rc<String>, Rc<String>, Vec<Rc<Value>>),
+    Typed(IdentifierId, IdentifierId, Vec<Rc<Value>>),
     Num(i64),
     Bool(bool),
     Function(Rc<FunctionDefinition>),
@@ -44,20 +48,28 @@ impl Display for Value {
 }
 
 impl Value {
-    fn value_to_str(&self) -> Result<String, String> {
+    fn value_to_str(
+        &self,
+        id_to_name: &impl Fn(&IdentifierId) -> Rc<String>,
+    ) -> Result<String, String> {
         match self {
-            Value::Typed(name, variant, values) => {
+            Value::Typed(id, variant, values) => {
                 let mut args = Vec::new();
                 for value in values {
-                    let result = value.value_to_str();
+                    let result = value.value_to_str(id_to_name);
                     if result.is_err() {
                         return result;
                     }
                     args.push(result.unwrap());
                 }
-                Ok(format!("{name}::{variant}({})", args.join(", ")))
+                Ok(format!(
+                    "{}::{}({})",
+                    id_to_name(id),
+                    id_to_name(variant),
+                    args.join(", ")
+                ))
             }
-            Value::Function(_) => Ok(format!("Function")),
+            Value::Function(def) => Ok(format!("Function {}", id_to_name(&def.id))),
             Value::Num(x) => Ok(format!("{x}")),
             Value::Bool(x) => Ok(format!("{x}")),
             Value::Void => Ok("Void".to_string()),
@@ -68,7 +80,7 @@ impl Value {
 #[derive(Clone, Debug)]
 struct PatternMatchResult {
     is_match: bool,
-    bindings: HashMap<Rc<String>, Rc<Value>>,
+    bindings: HashMap<IdentifierId, Rc<Value>>,
 }
 
 impl PatternMatchResult {
@@ -79,7 +91,7 @@ impl PatternMatchResult {
         }
     }
 
-    fn with_match(bindings: HashMap<Rc<String>, Rc<Value>>) -> Self {
+    fn with_match(bindings: HashMap<IdentifierId, Rc<Value>>) -> Self {
         Self {
             is_match: true,
             bindings,
@@ -92,13 +104,19 @@ pub struct REPL {
     type_info: TypeInfo,
 }
 
+fn range(n: usize) -> Vec<i64> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut v = range(n - 1);
+    v.push(n as i64);
+    return v;
+}
+
 impl REPL {
     pub fn new() -> Self {
         Self {
-            program: Program {
-                functions: InsertionOrderHashMap::new(),
-                types: HashMap::new(),
-            },
+            program: Program::new(),
             type_info: TypeInfo::new(),
         }
     }
@@ -119,45 +137,54 @@ impl REPL {
         }
 
         let ast = result.ast;
-        let result = to_repr(&ast);
+        let result = to_repr(&ast, &mut self.program.identifier_id_map);
         if result.is_ok() {
-            let Program { functions, types } = result.unwrap();
-            for (name, definition) in types {
-                println!("Defined type {}", name);
+            let Program {
+                functions,
+                types,
+                identifier_id_map: _,
+            } = result.unwrap();
+            for (id, definition) in types {
+                println!("Defined type {}", self.var_name(&id));
 
-                self.type_info.add_user_type(Rc::clone(&name), &definition);
-                self.program.types.insert(name, definition);
+                self.type_info.add_user_type(id, &definition);
+                self.program.types.insert(id, definition);
             }
             for key in functions.keys() {
-                let (name, definition) = (key, functions.get(key.as_ref()).unwrap());
-                let result = infer_function_type(&self.program, &self.type_info, &definition);
+                let (id, definition) = (key, functions.get(key.as_ref()).unwrap());
+                let result = infer_function_type(&mut self.program, &self.type_info, &definition);
                 if result.is_err() {
                     println!("ERROR: {}", result.unwrap_err());
                 } else {
                     let function_type = result.unwrap();
-                    println!("Defined function {}: {}", name, function_type.name());
+                    println!(
+                        "Defined function {}: {}",
+                        self.program.var_name(id),
+                        self.program.var_name(&function_type.id()),
+                    );
 
-                    self.program
-                        .functions
-                        .insert(name.to_string(), definition.to_owned());
-                    self.type_info
-                        .function_types
-                        .insert(Rc::clone(name), function_type);
+                    self.program.functions.insert(**id, Rc::clone(definition));
+                    self.type_info.function_types.insert(**id, function_type);
                 }
             }
         } else {
             let original_error = result.unwrap_err();
-            let result = expression_repr(&ast);
+            let result = expression_repr(&ast, &mut self.program.identifier_id_map);
             if result.is_ok() {
-                let result = self.evaluate_expression(
-                    &HashMap::from([
-                        (Rc::new("true".to_string()), Rc::new(Value::Bool(true))),
-                        (Rc::new("false".to_string()), Rc::new(Value::Bool(false))),
-                    ]),
-                    &result.unwrap(),
-                );
+                let values = HashMap::from([
+                    (TRUE_ID, Rc::new(Value::Bool(true))),
+                    (FALSE_ID, Rc::new(Value::Bool(false))),
+                ]);
+                let start = Instant::now();
+                let result = self.evaluate_expression(&values, &result.unwrap());
+
                 if result.is_ok() {
                     //println!("{}", result.unwrap());
+                    println!("Evaluated in {}us", start.elapsed().as_micros());
+
+                    let start = Instant::now();
+                    let x = range(1000);
+                    println!("Evaluated{} in {}us", x.len(), start.elapsed().as_micros());
                 } else {
                     println!("ERROR: {}", result.unwrap_err());
                 }
@@ -168,13 +195,14 @@ impl REPL {
     }
 
     fn pattern_match(
-        function_name: &str,
+        &self,
+        function_id: &IdentifierId,
         pattern: &Pattern,
         args: &Vec<Rc<Value>>,
     ) -> Result<PatternMatchResult, String> {
         if pattern.components.len() != args.len() {
             return Err(format!(
-                "Found pattern with {} elements but function '{function_name}' has {} arguments",
+                "Found pattern with {} elements but function '{function_id}' has {} arguments",
                 pattern.components.len(),
                 args.len()
             ));
@@ -186,45 +214,54 @@ impl REPL {
             let arg = &args[i];
             match element {
                 DestructuringComponent::Identifier(identifier) => match arg.as_ref() {
-                    Value::Typed(name, variant, values) => {
-                        if identifier.as_str() != "_" {
-                            if identifier.as_str() != variant.as_str() {
+                    Value::Typed(id, variant, values) => {
+                        let identifier = *identifier;
+                        if identifier != WILDCARD_ID {
+                            if identifier != *variant {
                                 return Ok(PatternMatchResult::no_match());
                             }
 
                             if !values.is_empty() {
-                                return Err(format!("Cannot destructure variant '{variant}' of type '{name}' with zero elements, because constructor requires {} arguments", values.len()));
+                                return Err(format!("Cannot destructure variant '{}' of type '{}' with zero elements, because constructor requires {} arguments",
+                                self.program.var_name(variant),
+                                self.program.var_name(id),
+                                values.len()));
                             }
                         }
                     }
                     Value::Num(_) => {
                         //todo: multiple "_" should also be considered wildcard
-                        if identifier.as_str() != "_" {
-                            return Err(format!("Redundant re-binding '{identifier}' of numerical argument {i} in function '{function_name}'"));
+                        if *identifier != WILDCARD_ID {
+                            return Err(format!("Redundant re-binding '{}' of numerical argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
                         }
                     }
                     Value::Function(_) => {
                         //todo: multiple "_" should also be considered wildcard
-                        if identifier.as_str() != "_" {
-                            return Err(format!("Redundant re-binding '{identifier}' of function argument {i} in function '{function_name}'"));
+                        if *identifier != WILDCARD_ID {
+                            return Err(format!("Redundant re-binding '{}' of function argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
                         }
                     }
                     Value::Bool(bool_val) => {
-                        let bool_id = identifier.as_str();
-                        if (bool_id == "true" && !bool_val) || (bool_id == "false" && *bool_val) {
+                        if (*identifier == TRUE_ID && !bool_val)
+                            || (*identifier == FALSE_ID && *bool_val)
+                        {
                             return Ok(PatternMatchResult::no_match());
                         }
                     }
                     Value::Void => return Err(format!("Arg is Void")),
                 },
                 DestructuringComponent::Destructuring(destructuring) => match arg.as_ref() {
-                    Value::Typed(name, variant, values) => {
-                        if variant.as_str() != destructuring.0.as_str() {
+                    Value::Typed(id, variant, values) => {
+                        if *variant != destructuring.0 {
                             return Ok(PatternMatchResult::no_match());
                         }
 
                         if values.len() != destructuring.1.len() {
-                            return Err(format!("Cannot destructure variant '{variant}' of type '{name}' in {} elements, because constructor requires {} arguments", values.len(), destructuring.1.len()));
+                            return Err(format!("Cannot destructure variant '{}' of type '{}' in {} elements, because constructor requires {} arguments", 
+                            self.program.var_name(variant),
+                            self.program.var_name(id),
+                            values.len(),
+                            destructuring.1.len()));
                         }
 
                         for i in 0..values.len() {
@@ -232,10 +269,10 @@ impl REPL {
                             let pattern = &destructuring.1[i];
 
                             match (pattern, value.as_ref()) {
-                                (DestructuringComponent::Identifier(i), _) if i.as_str() == "_" => {
+                                (DestructuringComponent::Identifier(i), _) if *i == WILDCARD_ID => {
                                 }
                                 (DestructuringComponent::Identifier(i), Value::Typed(_, _, _)) => {
-                                    bindings.insert(Rc::clone(i), Rc::clone(value));
+                                    bindings.insert(*i, Rc::clone(value));
                                 }
                                 (DestructuringComponent::Number(x), Value::Num(y)) => {
                                     if x != y {
@@ -243,15 +280,14 @@ impl REPL {
                                     }
                                 }
                                 (DestructuringComponent::Identifier(i), Value::Num(_)) => {
-                                    bindings.insert(Rc::clone(i), Rc::clone(value));
+                                    bindings.insert(*i, Rc::clone(value));
                                 }
                                 (DestructuringComponent::Identifier(x), Value::Bool(y)) => {
-                                    if (x.as_str() == "true" && !y)
-                                        || (x.as_str() == "false" && y.to_owned())
-                                    {
+                                    let x = *x;
+                                    if (x == TRUE_ID && !y) || (x == FALSE_ID && *y) {
                                         return Ok(PatternMatchResult::no_match());
                                     }
-                                    bindings.insert(Rc::clone(x), Rc::clone(value));
+                                    bindings.insert(x, Rc::clone(value));
                                 }
                                 _ => return Err("Unsupported".to_string()),
                             }
@@ -263,8 +299,11 @@ impl REPL {
                     Value::Void => return Err(format!("Arg is Void")),
                 },
                 DestructuringComponent::Number(pattern_val) => match arg.as_ref() {
-                    Value::Typed(name, _, _) => {
-                        return Err(format!("Type '{name}' cannot be matched to Int"));
+                    Value::Typed(id, _, _) => {
+                        return Err(format!(
+                            "Type '{}' cannot be matched to Int",
+                            self.program.var_name(&id)
+                        ));
                     }
                     Value::Num(arg_val) => {
                         if pattern_val != arg_val {
@@ -281,16 +320,16 @@ impl REPL {
     }
 
     fn evaluate_function_call(
-        &self,
+        &mut self,
         function_call: &FunctionCall,
-        identifier_values: &HashMap<Rc<String>, Rc<Value>>,
+        identifier_values: &HashMap<IdentifierId, Rc<Value>>,
     ) -> Result<Rc<Value>, String> {
-        match function_call.name.as_str() {
-            "+" | "-" | "/" | "*" => {
+        match function_call.id {
+            ADD_ID | SUB_ID | MUL_ID | DIV_ID => {
                 if function_call.parameters.len() < 2 {
                     return Err(format!(
                         "Function '{}' requires at least 2 parameters but got '{}'",
-                        function_call.name,
+                        self.program.var_name(&function_call.id),
                         function_call.parameters.len()
                     ));
                 }
@@ -303,37 +342,37 @@ impl REPL {
                         return result;
                     }
                     match result.unwrap().as_ref() {
-                        Value::Num(x) => values.push(x.to_owned()),
+                        Value::Num(x) => values.push(*x),
                         _ => {
                             return Err(format!(
                                 "Argument {i} of function '{}' is not numeric",
-                                function_call.name
+                                self.program.var_name(&function_call.id)
                             ))
                         }
                     }
                     i += 1;
                 }
-                match function_call.name.as_str() {
-                    "+" => Ok(Rc::new(Value::Num(
+                match function_call.id {
+                    ADD_ID => Ok(Rc::new(Value::Num(
                         values.into_iter().reduce(|acc, x| acc + x).unwrap(),
                     ))),
-                    "-" => Ok(Rc::new(Value::Num(
+                    SUB_ID => Ok(Rc::new(Value::Num(
                         values.into_iter().reduce(|acc, x| acc - x).unwrap(),
                     ))),
-                    "*" => Ok(Rc::new(Value::Num(
+                    MUL_ID => Ok(Rc::new(Value::Num(
                         values.into_iter().reduce(|acc, x| acc * x).unwrap(),
                     ))),
-                    "/" => Ok(Rc::new(Value::Num(
+                    DIV_ID => Ok(Rc::new(Value::Num(
                         values.into_iter().reduce(|acc, x| acc / x).unwrap(),
                     ))),
-                    _ => panic!("Unhandled arithmetic function {}", function_call.name),
+                    _ => panic!("Unhandled arithmetic function {}", function_call.id),
                 }
             }
-            ">" | "<" | "==" | ">=" | "<=" => {
+            GT_ID | LT_ID | EQ_ID | LE_ID | GE_ID => {
                 if function_call.parameters.len() != 2 {
                     return Err(format!(
                         "Function '{}' requires 2 parameters but got '{}'",
-                        function_call.name,
+                        self.program.var_name(&function_call.id),
                         function_call.parameters.len()
                     ));
                 }
@@ -353,25 +392,28 @@ impl REPL {
                 let right = result.unwrap();
 
                 let (left, right) = match (left.as_ref(), right.as_ref()) {
-                    (Value::Num(x), Value::Num(y)) => (x.to_owned(), y.to_owned()),
+                    (Value::Num(x), Value::Num(y)) => (*x, *y),
                     (_, _) => {
                         return Err(format!(
                             "Arguments of '{}' are not numeric",
-                            function_call.name
+                            self.program.var_name(&function_call.id),
                         ))
                     }
                 };
 
-                match function_call.name.as_str() {
-                    ">" => Ok(Rc::new(Value::Bool(left > right))),
-                    ">=" => Ok(Rc::new(Value::Bool(left >= right))),
-                    "<" => Ok(Rc::new(Value::Bool(left < right))),
-                    "<=" => Ok(Rc::new(Value::Bool(left <= right))),
-                    "==" => Ok(Rc::new(Value::Bool(left == right))),
-                    _ => panic!("Unhandled boolean function {}", function_call.name),
+                match function_call.id {
+                    GT_ID => Ok(Rc::new(Value::Bool(left > right))),
+                    GE_ID => Ok(Rc::new(Value::Bool(left >= right))),
+                    LT_ID => Ok(Rc::new(Value::Bool(left < right))),
+                    LE_ID => Ok(Rc::new(Value::Bool(left <= right))),
+                    EQ_ID => Ok(Rc::new(Value::Bool(left == right))),
+                    _ => panic!(
+                        "Unhandled boolean function {}",
+                        self.program.var_name(&function_call.id)
+                    ),
                 }
             }
-            "print" => {
+            PRINT_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
                 for param in &function_call.parameters {
@@ -379,7 +421,10 @@ impl REPL {
                     if result.is_err() {
                         return result;
                     }
-                    match result.unwrap().value_to_str() {
+                    match result
+                        .unwrap()
+                        .value_to_str(&|id| Rc::clone(self.program.var_name(id)))
+                    {
                         Ok(val) => values.push(val),
                         Err(err) => return Err(format!("Cannot print argument {i}: {err}")),
                     }
@@ -389,11 +434,14 @@ impl REPL {
                 Ok(Rc::new(Value::Void))
             }
             _ => {
-                let mut definition = self.program.functions.get(&function_call.name);
+                let mut definition = self.program.functions.get(&function_call.id);
                 if definition.is_none() {
-                    let function_value = identifier_values.get(&function_call.name);
+                    let function_value = identifier_values.get(&function_call.id);
                     if function_value.is_none() {
-                        return Err(format!("Function '{}' is not defined", function_call.name));
+                        return Err(format!(
+                            "Function '{}' is not defined",
+                            self.program.var_name(&function_call.id)
+                        ));
                     }
 
                     match function_value.unwrap().as_ref() {
@@ -401,11 +449,14 @@ impl REPL {
                             definition = Some(function_definition);
                         }
                         _ => {
-                            return Err(format!("'{}' is not a function", function_call.name));
+                            return Err(format!(
+                                "'{}' is not a function",
+                                self.program.var_name(&function_call.id)
+                            ));
                         }
                     }
                 }
-                let definition = definition.unwrap();
+                let definition = Rc::clone(&definition.unwrap());
 
                 //todo should be static checks
                 let expected_arg_num = definition.arguments.len();
@@ -413,7 +464,9 @@ impl REPL {
                 if expected_arg_num != actual_arg_num {
                     return Err(format!(
                         "Function '{}' expects {} arguments, but {} were provided",
-                        function_call.name, expected_arg_num, actual_arg_num
+                        self.program.var_name(&function_call.id),
+                        expected_arg_num,
+                        actual_arg_num
                     ));
                 }
 
@@ -428,80 +481,84 @@ impl REPL {
                     }
 
                     // Verify type matches
-                    // todo: move to type system, this is about 10% of evaluation
+                    // todo: move to type system, this is about 5-10% of evaluation
                     let value = result.unwrap();
-                    let arg_name = &definition.arguments[i].identifier;
+                    let arg_id = &definition.arguments[i].identifier;
                     let arg_type = &definition.arguments[i].typing;
                     match value.as_ref() {
-                        Value::Typed(name, variant, _) => {
+                        Value::Typed(type_id, variant, _) => {
                             match arg_type.as_ref() {
-                                Type::SimpleType(simple_type) => {
-                                    if simple_type != name {
-                                        return Err(format!("Argument '{}' in function '{}' has type '{}' but '{}' was provided", arg_name, function_call.name, arg_type.name(), simple_type));
+                                Type::SimpleType(simple_type_id) => {
+                                    if simple_type_id != type_id {
+                                        return Err(format!("Argument '{}' in function '{}' has type '{}' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_type.id()), self.var_name(&simple_type_id)));
                                     }
-                                    if !self.program.types.contains_key(simple_type) {
-                                        return Err(format!("Type '{simple_type}' is not defined"));
+                                    if !self.program.types.contains_key(simple_type_id) {
+                                        return Err(format!(
+                                            "Type '{}' is not defined",
+                                            self.program.var_name(simple_type_id)
+                                        ));
                                     }
-                                    let definition = self.program.types.get(simple_type).unwrap();
-                                    if !definition.variants.contains_key(variant.as_ref()) {
-                                        return Err(format!("Argument '{arg_name}' in function call '{}' has undefined variant '{variant}' for type '{simple_type}'", function_call.name));
+                                    let definition =
+                                        self.program.types.get(simple_type_id).unwrap();
+                                    if !definition.variants.contains_key(variant) {
+                                        return Err(format!("Argument '{}' in function call '{}' has undefined variant '{}' for type '{}'", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&variant), self.var_name(&simple_type_id)));
                                     }
                                 }
                                 //todo: should track that the same type is bound to the same type parameter
                                 Type::TypeParameter(_) => {}
                                 Type::ParametrizedType(_, _) => {}
-                                Type::FunctionType(_, _) => {
+                                Type::FunctionType(_, _, _) => {
                                     panic!("What to do 2")
                                 }
                                 Type::Unknown => {
-                                    return Err(format!("Unknown value is not supported for argument '{arg_name}' in function '{}'", function_call.name));
+                                    return Err(format!("Unknown value is not supported for argument '{}' in function '{}'", self.var_name(&arg_id), self.var_name(&function_call.id)));
                                 }
                             }
                         }
                         Value::Num(_) => match arg_type.as_ref() {
-                            Type::SimpleType(name) if name.as_str() == "Int" => {}
+                            Type::SimpleType(id) if *id == INT_ID => {}
                             _ => {
-                                return Err(format!("Argument '{}' in function '{}' has type 'Int' but '{}' was provided", arg_name, function_call.name, arg_type.name()));
+                                return Err(format!("Argument '{}' in function '{}' has type 'Int' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
                             }
                         },
                         Value::Bool(_) => match arg_type.as_ref() {
-                            Type::SimpleType(name) if name.as_str() == "Bool" => {}
+                            Type::SimpleType(id) if *id == BOOL_ID => {}
                             _ => {
-                                return Err(format!("Argument '{}' in function '{}' has type 'Bool' but '{}' was provided", arg_name, function_call.name, arg_type.name()));
+                                return Err(format!("Argument '{}' in function '{}' has type 'Bool' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
                             }
                         },
                         Value::Function(def) => match arg_type.as_ref() {
-                            Type::FunctionType(_, _) => {
+                            Type::FunctionType(_, _, _) => {
                                 let function_type =
-                                    infer_function_type(&self.program, &self.type_info, def);
+                                    infer_function_type(&mut self.program, &self.type_info, def);
                                 if function_type.is_err() {
                                     return Err(function_type.unwrap_err());
                                 }
                                 let function_type = function_type.unwrap();
 
                                 if function_type != Rc::clone(&arg_type) {
-                                    return Err(format!("Argument '{}' in function '{}' has type '{}' but '{}' was provided", arg_name, function_call.name, arg_type.name(), function_type.name()));
+                                    return Err(format!("Argument '{}' in function '{}' has type '{}' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id), self.var_name(&function_type.id())));
                                 }
                             }
                             _ => {
                                 let function_type =
-                                    infer_function_type(&self.program, &self.type_info, def);
+                                    infer_function_type(&mut self.program, &self.type_info, def);
                                 if function_type.is_err() {
                                     return Err(function_type.unwrap_err());
                                 }
                                 let function_type = function_type.unwrap();
 
-                                return Err(format!("Argument '{}' in function '{}' has type '{}' but '{}' was provided", arg_name, function_call.name, arg_type.name(), function_type.name()));
+                                return Err(format!("Argument '{}' in function '{}' has type '{}' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id), self.var_name(&function_type.id())));
                             }
                         },
                         Value::Void => {
                             return Err(format!(
                                 "Void is not a valid argument type in function '{}'",
-                                function_call.name
+                                self.var_name(&function_call.id)
                             ))
                         }
                     };
-                    arg_values.insert(Rc::clone(arg_name), Rc::clone(&value));
+                    arg_values.insert(*arg_id, Rc::clone(&value));
                     ordered_arg_values.push(value);
                 }
 
@@ -511,27 +568,33 @@ impl REPL {
 
                 for (pattern, expression) in &definition.bodies {
                     let result =
-                        REPL::pattern_match(&function_call.name, pattern, &ordered_arg_values);
+                        self.pattern_match(&function_call.id, pattern, &ordered_arg_values);
                     if result.is_err() {
                         return Err(result.unwrap_err());
                     }
                     let result = result.unwrap();
                     if result.is_match {
-                        let mut bindings = arg_values.clone();
-                        for (k, v) in &result.bindings {
-                            bindings.insert(Rc::clone(k), Rc::clone(v));
-                        }
-                        return self.evaluate_expression(&bindings, expression);
+                        return if !result.bindings.is_empty() {
+                            let mut bindings = arg_values.clone();
+                            for (k, v) in &result.bindings {
+                                bindings.insert(*k, Rc::clone(v));
+                            }
+                            self.evaluate_expression(&bindings, expression)
+                        } else {
+                            self.evaluate_expression(&arg_values, expression)
+                        };
                     }
                 }
 
                 //todo: should be caught at compile time
                 Err(format!(
                     "Non-exhaustive patterns in function '{}' for values: {}",
-                    function_call.name,
+                    self.program.var_name(&function_call.id),
                     ordered_arg_values
                         .iter()
-                        .map(|v| v.value_to_str().unwrap())
+                        .map(|v| v
+                            .value_to_str(&|id| Rc::clone(self.program.var_name(id)))
+                            .unwrap())
                         .collect::<Vec<String>>()
                         .join(", "),
                 ))
@@ -540,12 +603,12 @@ impl REPL {
     }
 
     fn evaluate_expression(
-        &self,
-        identifier_values: &HashMap<Rc<String>, Rc<Value>>,
+        &mut self,
+        identifier_values: &HashMap<IdentifierId, Rc<Value>>,
         expression: &Expression,
     ) -> Result<Rc<Value>, String> {
         match expression {
-            Expression::TypeConstructor(name, variant, expressions) => {
+            Expression::TypeConstructor(id, variant, expressions) => {
                 let mut values = Vec::new();
                 for expr in expressions {
                     let result = self.evaluate_expression(identifier_values, expr);
@@ -555,20 +618,20 @@ impl REPL {
 
                     values.push(result.unwrap());
                 }
-                
-                Ok(Rc::new(Value::Typed(Rc::clone(name), Rc::clone(variant), values)))
+
+                Ok(Rc::new(Value::Typed(*id, *variant, values)))
             }
             Expression::FunctionCall(function_call) => {
                 self.evaluate_function_call(function_call, identifier_values)
             }
             Expression::WithBlock(items, expression) => {
                 let mut bindings = identifier_values.clone();
-                for (identifier, expr) in items {
+                for (id, expr) in items {
                     let result = self.evaluate_expression(&bindings, expr);
                     if result.is_err() {
                         return result;
                     }
-                    bindings.insert(Rc::clone(identifier), Rc::clone(&result.unwrap()));
+                    bindings.insert(*id, Rc::clone(&result.unwrap()));
                 }
                 return self.evaluate_expression(&bindings, expression);
             }
@@ -580,7 +643,7 @@ impl REPL {
 
                 match condition.unwrap().as_ref() {
                     Value::Bool(condition) => {
-                        if condition.to_owned() {
+                        if *condition {
                             self.evaluate_expression(identifier_values, true_branch)
                         } else {
                             self.evaluate_expression(identifier_values, false_branch)
@@ -600,12 +663,19 @@ impl REPL {
                     return Ok(Rc::new(Value::Function(Rc::clone(result.unwrap()))));
                 }
 
-                Err(format!("Unknown identifier '{}'", identifier))
+                Err(format!(
+                    "Unknown identifier '{}'",
+                    self.program.var_name(identifier)
+                ))
             }
-            Expression::Number(x) => Ok(Rc::new(Value::Num(x.to_owned()))),
+            Expression::Number(x) => Ok(Rc::new(Value::Num(*x))),
             Expression::LambdaExpression(function_definition) => {
                 Ok(Rc::new(Value::Function(Rc::clone(function_definition))))
             }
         }
+    }
+
+    fn var_name(&self, id: &i32) -> &Rc<String> {
+        self.program.identifier_id_map.get_identifier(id).unwrap()
     }
 }

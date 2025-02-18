@@ -9,14 +9,18 @@ use crate::{
     utils::InsertionOrderHashMap,
 };
 
-use super::grammar::Rules;
+use super::{
+    grammar::Rules,
+    identifier_map::{IdentifierId, IdentifierIdMap, UNKNOWN_ID},
+};
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub(super) enum Type {
-    SimpleType(Rc<String>),
-    TypeParameter(Rc<String>),
-    ParametrizedType(Rc<String>, Vec<Type>),
-    FunctionType(Vec<Rc<Type>>, Rc<Type>),
+    SimpleType(IdentifierId),
+    TypeParameter(IdentifierId),
+    ParametrizedType(IdentifierId, Vec<Type>),
+    // IdentifierId is the id of the type name, not the name of the function
+    FunctionType(IdentifierId, Vec<Rc<Type>>, Rc<Type>),
     Unknown,
 }
 
@@ -30,33 +34,35 @@ impl Type {
 
     pub fn as_return_type(&self) -> Rc<Type> {
         match self {
-            Type::FunctionType(_, return_type) => Rc::clone(return_type),
+            Type::FunctionType(_, _, return_type) => Rc::clone(return_type),
             _ => panic!("Not a function type: '{:?}'", self),
         }
     }
 
-    pub fn name(&self) -> Rc<String> {
+    pub fn name(&self, map: &IdentifierIdMap) -> Rc<String> {
         match self {
-            Type::SimpleType(name) => Rc::clone(name),
-            Type::TypeParameter(name) => Rc::clone(name),
-            Type::ParametrizedType(name, _) => Rc::clone(name),
-            Type::FunctionType(inputs, output) => Rc::new(format!(
-                "({}) -> {}",
-                inputs
-                    .iter()
-                    .map(|t| t.name().to_string())
-                    .collect::<Vec<String>>()
-                    .join(", "),
-                output.name()
-            )),
+            Type::SimpleType(id) => Rc::clone(map.get_identifier(id).unwrap()),
+            Type::TypeParameter(id) => Rc::clone(map.get_identifier(id).unwrap()),
+            Type::ParametrizedType(id, _) => Rc::clone(map.get_identifier(id).unwrap()),
+            Type::FunctionType(id, _, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::Unknown => Rc::new("Unknown".to_string()),
         }
     }
 
-    pub fn type_parameters(&self) -> HashSet<Rc<String>> {
+    pub fn id(&self) -> IdentifierId {
+        match self {
+            Type::SimpleType(id) => *id,
+            Type::TypeParameter(id) => *id,
+            Type::ParametrizedType(id, _) => *id,
+            Type::FunctionType(id, _, _) => *id,
+            Type::Unknown => UNKNOWN_ID,
+        }
+    }
+
+    pub fn type_parameters(&self) -> HashSet<IdentifierId> {
         match self {
             Type::SimpleType(_) => HashSet::new(),
-            Type::TypeParameter(param) => HashSet::from([Rc::clone(param)]),
+            Type::TypeParameter(param) => HashSet::from([*param]),
             Type::ParametrizedType(_, vec) => {
                 let mut parameters = HashSet::new();
                 for t in vec {
@@ -67,9 +73,22 @@ impl Type {
                 parameters
             }
             //todo: returns all the type params in inputs and output
-            Type::FunctionType(inputs, output) => HashSet::new(),
+            Type::FunctionType(_, _, _) => HashSet::new(),
             Type::Unknown => HashSet::new(),
         }
+    }
+
+    pub fn create_function_type(identifier_id_map: &mut IdentifierIdMap, types: Vec<Rc<Type>>, return_type: Rc<Type>) -> Type {
+        let lambda_name_id = identifier_id_map.get_id(&Rc::new(format!(
+            "({}) -> {}",
+            types
+                .iter()
+                .map(|t| t.name(identifier_id_map).to_string())
+                .collect::<Vec<String>>()
+                .join(", "),
+            return_type.name(identifier_id_map)
+        )));
+        Type::FunctionType(lambda_name_id, types, return_type)
     }
 }
 
@@ -79,51 +98,45 @@ pub(super) enum TypeVariant {
     Cartesian(String, Vec<Rc<Type>>),
 }
 
-impl TypeVariant {
-    pub(super) fn name(&self) -> &String {
-        match self {
-            TypeVariant::Constant(name) => name,
-            TypeVariant::Cartesian(name, _) => name,
-        }
-    }
-}
-
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct TypeDefinition {
     pub(super) def: Rc<Type>,
-    pub(super) variants: HashMap<String, TypeVariant>,
+    pub(super) variants: HashMap<IdentifierId, Rc<TypeVariant>>,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 pub(super) enum DestructuringComponent {
-    Identifier(Rc<String>),
+    Identifier(IdentifierId),
     Destructuring(Destructuring),
     Number(i64),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub(super) struct Destructuring(pub(super) String, pub(super) Vec<DestructuringComponent>);
+pub(super) struct Destructuring(
+    pub(super) IdentifierId,
+    pub(super) Vec<DestructuringComponent>,
+);
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionCall {
-    pub(super) name: String,
+    pub(super) id: IdentifierId,
     pub(super) parameters: Vec<Expression>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) enum Expression {
-    TypeConstructor(Rc<String>, Rc<String>, Vec<Expression>),
+    TypeConstructor(IdentifierId, IdentifierId, Vec<Expression>),
     FunctionCall(FunctionCall),
-    Identifier(String),
+    Identifier(IdentifierId),
     Number(i64),
-    WithBlock(Vec<(Rc<String>, Expression)>, Rc<Expression>),
+    WithBlock(Vec<(IdentifierId, Expression)>, Rc<Expression>),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
     LambdaExpression(Rc<FunctionDefinition>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionArgument {
-    pub(super) identifier: Rc<String>,
+    pub(super) identifier: IdentifierId,
     pub(super) typing: Rc<Type>,
 }
 
@@ -134,7 +147,7 @@ pub(super) struct Pattern {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionDefinition {
-    pub(super) name: String,
+    pub(super) id: IdentifierId,
     pub(super) arguments: Vec<FunctionArgument>,
     pub(super) bodies: Vec<(Pattern, Expression)>,
 }
@@ -145,62 +158,88 @@ impl FunctionDefinition {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub(super) struct Program {
-    pub(super) functions: InsertionOrderHashMap<String, Rc<FunctionDefinition>>,
-    pub(super) types: HashMap<Rc<String>, TypeDefinition>,
+    pub(super) functions: InsertionOrderHashMap<IdentifierId, Rc<FunctionDefinition>>,
+    pub(super) types: HashMap<IdentifierId, TypeDefinition>,
+    pub(super) identifier_id_map: IdentifierIdMap,
 }
 
-fn type_repr(ast: &AST<Rules>) -> Result<Type, String> {
+impl Program {
+    pub(super) fn new() -> Self {
+        Self {
+            functions: InsertionOrderHashMap::new(),
+            types: HashMap::new(),
+            identifier_id_map: IdentifierIdMap::new(),
+        }
+    }
+
+    pub(super) fn var_name(&self, id: &IdentifierId) -> &Rc<String> {
+        self.identifier_id_map.get_identifier(id).unwrap()
+    }
+}
+
+fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Result<Type, String> {
     let name = ast.matched[0].unwrap_str();
     return match ast.id {
-        Some(Rules::Identifier) => Ok(Type::SimpleType(Rc::new(name))),
-        Some(Rules::TypeParameter) => Ok(Type::TypeParameter(Rc::new(name))),
+        Some(Rules::Identifier) => Ok(Type::SimpleType(identifier_id_map.get_id(&Rc::new(name)))),
+        Some(Rules::TypeParameter) => Ok(Type::TypeParameter(
+            identifier_id_map.get_id(&Rc::new(name)),
+        )),
         Some(Rules::ParametrizedType) => {
             let subtype = &ast.children[2];
             if subtype.id == Some(Rules::Identifier) || subtype.id != Some(Rules::Elements) {
-                let result = type_repr(subtype);
+                let result = type_repr(subtype, identifier_id_map);
                 if result.is_err() {
                     return Err(result.unwrap_err());
                 }
-                return Ok(Type::ParametrizedType(Rc::new(name), vec![result.unwrap()]));
+                return Ok(Type::ParametrizedType(
+                    identifier_id_map.get_id(&Rc::new(name)),
+                    vec![result.unwrap()],
+                ));
             }
 
             let mut type_params = Vec::new();
             for i in (0..subtype.children.len()).step_by(2) {
-                let result = type_repr(&subtype.children[i]);
+                let result = type_repr(&subtype.children[i], identifier_id_map);
                 if result.is_err() {
                     return Err(result.unwrap_err());
                 }
                 type_params.push(result.unwrap());
             }
 
-            Ok(Type::ParametrizedType(Rc::new(name), type_params))
+            Ok(Type::ParametrizedType(
+                identifier_id_map.get_id(&Rc::new(name)),
+                type_params,
+            ))
         }
         Some(Rules::FunctionType) => {
             let arguments = &ast.children[1];
             let mut types = Vec::new();
             for child in &arguments.children {
-                let result = type_repr(child);
+                let result = type_repr(child, identifier_id_map);
                 if result.is_err() {
                     return result;
                 }
                 types.push(Rc::new(result.unwrap()));
             }
 
-            let result = type_repr(&ast.children[4]);
+            let result = type_repr(&ast.children[4], identifier_id_map);
             if result.is_err() {
                 return result;
             }
             let return_type = Rc::new(result.unwrap());
 
-            Ok(Type::FunctionType(types, return_type))
+            Ok(Type::create_function_type(identifier_id_map, types, return_type))
         }
         _ => Err(format!("Expected a type but got {}", ast)),
     };
 }
 
-fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
+fn destructuring_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<Destructuring, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::Destructuring {
         return Err(format!("Expected a Destructuring AST but got {}", ast));
     }
@@ -215,11 +254,13 @@ fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
                     if first_component.is_none() {
                         first_component = Some(result);
                     } else {
-                        components.push(DestructuringComponent::Identifier(Rc::new(result)));
+                        components.push(DestructuringComponent::Identifier(
+                            identifier_id_map.get_id(&Rc::new(result)),
+                        ));
                     }
                 }
                 Some(Rules::Destructuring) => {
-                    let result = destructuring_repr(child);
+                    let result = destructuring_repr(child, identifier_id_map);
                     if result.is_err() {
                         return Err(result.unwrap_err());
                     }
@@ -231,14 +272,19 @@ fn destructuring_repr(ast: &AST<Rules>) -> Result<Destructuring, String> {
     }
 
     Ok(Destructuring(
-        first_component.expect("Bug! Destructuring cannot be empty"),
+        identifier_id_map.get_id(&Rc::new(
+            first_component.expect("Bug! Destructuring cannot be empty"),
+        )),
         components,
     ))
 }
 
-fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
+fn argument_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<FunctionArgument, String> {
     let arg = &ast.children[0];
-    let result = type_repr(&ast.children[2]);
+    let result = type_repr(&ast.children[2], identifier_id_map);
     if result.is_err() {
         return Err(result.unwrap_err());
     }
@@ -246,7 +292,7 @@ fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
     let type_ = result.unwrap();
     return if arg.id == Some(Rules::Identifier) {
         Ok(FunctionArgument {
-            identifier: Rc::new(arg.matched[0].unwrap_str()),
+            identifier: identifier_id_map.get_id(&Rc::new(arg.matched[0].unwrap_str())),
             typing: Rc::new(type_),
         })
     } else {
@@ -257,12 +303,15 @@ fn argument_repr(ast: &AST<Rules>) -> Result<FunctionArgument, String> {
     };
 }
 
-fn arguments_repr(ast: &AST<Rules>) -> Result<Vec<FunctionArgument>, String> {
+fn arguments_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<Vec<FunctionArgument>, String> {
     let mut arguments = Vec::new();
     match ast.id {
         None => {}
         Some(Rules::Argument) => {
-            let result = argument_repr(ast);
+            let result = argument_repr(ast, identifier_id_map);
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
@@ -270,7 +319,7 @@ fn arguments_repr(ast: &AST<Rules>) -> Result<Vec<FunctionArgument>, String> {
         }
         Some(Rules::Arguments) => {
             for child in &ast.children {
-                let result = argument_repr(child);
+                let result = argument_repr(child, identifier_id_map);
                 if result.is_err() {
                     return Err(result.unwrap_err());
                 }
@@ -282,7 +331,10 @@ fn arguments_repr(ast: &AST<Rules>) -> Result<Vec<FunctionArgument>, String> {
     Ok(arguments)
 }
 
-fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), String> {
+fn signature_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<(String, Vec<FunctionArgument>), String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::FunctionSignature {
         return Err(format!(
             "Expected a FunctionSignature AST but got {:?}",
@@ -293,7 +345,7 @@ fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), S
     let function_name = ast.matched[1].unwrap_str();
 
     if ast.children.len() > 2 {
-        let result = arguments_repr(&ast.children[2]);
+        let result = arguments_repr(&ast.children[2], identifier_id_map);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
@@ -304,7 +356,10 @@ fn signature_repr(ast: &AST<Rules>) -> Result<(String, Vec<FunctionArgument>), S
     }
 }
 
-pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
+pub fn expression_repr(
+    ast: &AST<Rules>,
+    identifier_map: &mut IdentifierIdMap,
+) -> Result<Expression, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::Expression {
         return Err(format!("Expected Expression but got {:?}", ast.id));
     }
@@ -313,7 +368,9 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
     let rule = body.id;
 
     match rule {
-        Some(Rules::Identifier) => Ok(Expression::Identifier(ast.matched[0].unwrap_str())),
+        Some(Rules::Identifier) => Ok(Expression::Identifier(
+            identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
+        )),
         Some(Rules::Number) => Ok(Expression::Number(
             ast.matched[0].unwrap_str().parse::<i64>().unwrap(),
         )),
@@ -321,7 +378,7 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
             let mut parameters = Vec::new();
             for child in &body.children[2].children {
                 if child.id == Some(Rules::Expression) {
-                    let result = expression_repr(child);
+                    let result = expression_repr(child, identifier_map);
                     if result.is_err() {
                         return Err(result.unwrap_err());
                     }
@@ -329,7 +386,7 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
                 }
             }
             Ok(Expression::FunctionCall(FunctionCall {
-                name: ast.matched[0].unwrap_str(),
+                id: identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
                 parameters,
             }))
         }
@@ -337,7 +394,7 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
             let mut parameters = Vec::new();
             for child in &body.children[4].children {
                 if child.id == Some(Rules::Expression) {
-                    let result = expression_repr(child);
+                    let result = expression_repr(child, identifier_map);
                     if result.is_err() {
                         return Err(result.unwrap_err());
                     }
@@ -345,8 +402,8 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
                 }
             }
             Ok(Expression::TypeConstructor(
-                Rc::new(ast.matched[0].unwrap_str()),
-                Rc::new(ast.matched[2].unwrap_str()),
+                identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
+                identifier_map.get_id(&Rc::new(ast.matched[2].unwrap_str())),
                 parameters,
             ))
         }
@@ -354,28 +411,28 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
             let mut elements = Vec::new();
             for child in &body.children[1].children {
                 let identifier = child.children[0].matched[0].unwrap_str();
-                let expr = expression_repr(&child.children[2]);
+                let expr = expression_repr(&child.children[2], identifier_map);
                 if expr.is_err() {
                     return Err(expr.unwrap_err());
                 }
-                elements.push((Rc::new(identifier), expr.unwrap()));
+                elements.push((identifier_map.get_id(&Rc::new(identifier)), expr.unwrap()));
             }
-            let result = expression_repr(&body.children[2]);
+            let result = expression_repr(&body.children[2], identifier_map);
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
             Ok(Expression::WithBlock(elements, Rc::new(result.unwrap())))
         }
         Some(Rules::IfExpression) => {
-            let condition = expression_repr(&body.children[1]);
+            let condition = expression_repr(&body.children[1], identifier_map);
             if condition.is_err() {
                 return Err(condition.unwrap_err());
             }
-            let true_branch = expression_repr(&body.children[2]);
+            let true_branch = expression_repr(&body.children[2], identifier_map);
             if true_branch.is_err() {
                 return Err(true_branch.unwrap_err());
             }
-            let false_branch = expression_repr(&body.children[3]);
+            let false_branch = expression_repr(&body.children[3], identifier_map);
             if false_branch.is_err() {
                 return Err(false_branch.unwrap_err());
             }
@@ -387,7 +444,7 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
             ))
         }
         Some(Rules::LambdaExpression) => {
-            let result = arguments_repr(&body.children[1]);
+            let result = arguments_repr(&body.children[1], identifier_map);
             if result.is_err() {
                 return Err(format!(
                     "Error in lambda arguments: {}",
@@ -396,7 +453,7 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
             }
             let args = result.unwrap();
 
-            let result = expression_repr(&body.children[4]);
+            let result = expression_repr(&body.children[4], identifier_map);
             if result.is_err() {
                 return Err(format!(
                     "Error in lambda return expression: {}",
@@ -406,12 +463,13 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
             let expr = result.unwrap();
 
             Ok(Expression::LambdaExpression(Rc::new(FunctionDefinition {
-                name: body
-                    .matched
-                    .iter()
-                    .map(|t| t.unwrap_str())
-                    .collect::<Vec<String>>()
-                    .join(" "),
+                id: identifier_map.get_id(&Rc::new(
+                    body.matched
+                        .iter()
+                        .map(|t| t.unwrap_str())
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                )),
                 arguments: args,
                 bodies: vec![(
                     Pattern {
@@ -428,7 +486,10 @@ pub fn expression_repr(ast: &AST<Rules>) -> Result<Expression, String> {
     }
 }
 
-fn pattern_matching_repr(ast: &AST<Rules>) -> Result<Vec<(Pattern, Expression)>, String> {
+fn pattern_matching_repr(
+    ast: &AST<Rules>,
+    identifier_map: &mut IdentifierIdMap,
+) -> Result<Vec<(Pattern, Expression)>, String> {
     let mut bodies = Vec::new();
     for pattern in &ast.children {
         if pattern.id != Some(Rules::Pattern) {
@@ -439,11 +500,11 @@ fn pattern_matching_repr(ast: &AST<Rules>) -> Result<Vec<(Pattern, Expression)>,
         for component in &pattern.children[0].children {
             if component.matched[0] != Token::str(",") {
                 let destructuring = match component.id {
-                    Some(Rules::Identifier) => DestructuringComponent::Identifier(Rc::new(
-                        component.matched[0].unwrap_str(),
-                    )),
+                    Some(Rules::Identifier) => DestructuringComponent::Identifier(
+                        identifier_map.get_id(&Rc::new(component.matched[0].unwrap_str())),
+                    ),
                     Some(Rules::Destructuring) => {
-                        let result = destructuring_repr(&component);
+                        let result = destructuring_repr(&component, identifier_map);
                         if result.is_err() {
                             return Err(result.unwrap_err());
                         }
@@ -463,7 +524,7 @@ fn pattern_matching_repr(ast: &AST<Rules>) -> Result<Vec<(Pattern, Expression)>,
             }
         }
 
-        let result = expression_repr(&pattern.children[1].children[1]);
+        let result = expression_repr(&pattern.children[1].children[1], identifier_map);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
@@ -473,12 +534,15 @@ fn pattern_matching_repr(ast: &AST<Rules>) -> Result<Vec<(Pattern, Expression)>,
     return Ok(bodies);
 }
 
-fn function_repr(ast: &AST<Rules>) -> Result<(String, FunctionDefinition), String> {
+fn function_repr(
+    ast: &AST<Rules>,
+    identifier_map: &mut IdentifierIdMap,
+) -> Result<FunctionDefinition, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::FunctionDef {
         return Err(format!("Expected a FunctionDef AST but got {:?}", ast.id));
     }
 
-    let result = signature_repr(&ast.children[0]);
+    let result = signature_repr(&ast.children[0], identifier_map);
     if result.is_err() {
         return Err(result.unwrap_err());
     }
@@ -494,7 +558,7 @@ fn function_repr(ast: &AST<Rules>) -> Result<(String, FunctionDefinition), Strin
     let rule = body.id.unwrap();
 
     if rule == Rules::FunctionBody {
-        let result = expression_repr(&body.children[1]);
+        let result = expression_repr(&body.children[1], identifier_map);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
@@ -505,7 +569,7 @@ fn function_repr(ast: &AST<Rules>) -> Result<(String, FunctionDefinition), Strin
             result.unwrap(),
         ));
     } else if rule == Rules::PatternMatching {
-        let result = pattern_matching_repr(&body.children[1]);
+        let result = pattern_matching_repr(&body.children[1], identifier_map);
         if result.is_err() {
             return Err(result.unwrap_err());
         }
@@ -518,20 +582,23 @@ fn function_repr(ast: &AST<Rules>) -> Result<(String, FunctionDefinition), Strin
     }
 
     let definition = FunctionDefinition {
-        name: name.clone(),
+        id: identifier_map.get_id(&Rc::new(name)),
         arguments,
         bodies,
     };
 
-    Ok((name, definition))
+    Ok(definition)
 }
 
-fn type_variant_repr(ast: &AST<Rules>) -> Result<(String, TypeVariant), String> {
+fn type_variant_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<(String, TypeVariant), String> {
     let name = ast.matched[0].unwrap_str();
     if ast.children[1].id == Some(Rules::Elements) {
         let mut components = Vec::new();
         for child in &ast.children[1].children {
-            let result = type_repr(child);
+            let result = type_repr(child, identifier_id_map);
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
@@ -543,7 +610,10 @@ fn type_variant_repr(ast: &AST<Rules>) -> Result<(String, TypeVariant), String> 
     Ok((name.clone(), TypeVariant::Constant(name)))
 }
 
-fn type_definition_repr(ast: &AST<Rules>) -> Result<(Rc<String>, TypeDefinition), String> {
+fn type_definition_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<(IdentifierId, TypeDefinition), String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::TypeDef {
         return Err(format!("Expected a TypeDef AST but got {:?}", ast.id));
     }
@@ -555,7 +625,7 @@ fn type_definition_repr(ast: &AST<Rules>) -> Result<(Rc<String>, TypeDefinition)
         ));
     }
 
-    let _type = type_repr(&ast.children[1]);
+    let _type = type_repr(&ast.children[1], identifier_id_map);
     if _type.is_err() {
         return Err(_type.unwrap_err());
     }
@@ -564,25 +634,28 @@ fn type_definition_repr(ast: &AST<Rules>) -> Result<(Rc<String>, TypeDefinition)
     let mut variants = HashMap::new();
     for child in &ast.children[3].children {
         if child.id == Some(Rules::TypeDef) {
-            let result = type_variant_repr(&child);
+            let result = type_variant_repr(&child, identifier_id_map);
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
             let (name, variant) = result.unwrap();
-            variants.insert(name, variant);
+            variants.insert(identifier_id_map.get_id(&Rc::new(name)), Rc::new(variant));
         }
     }
 
     let type_rc = Rc::new(_type);
     let definition = TypeDefinition {
         def: Rc::clone(&type_rc),
-        variants: variants,
+        variants,
     };
 
-    Ok((type_rc.name(), definition))
+    Ok((type_rc.id(), definition))
 }
 
-pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
+pub fn to_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<Program, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::Program {
         return Err(format!("Expected a Program AST but got {:?}", ast.id));
     }
@@ -592,16 +665,16 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
     for node in &ast.children {
         match node.id {
             Some(Rules::FunctionDef) => {
-                let result = function_repr(node);
+                let result = function_repr(node, identifier_id_map);
                 if result.is_err() {
                     return Err(result.unwrap_err());
                 }
 
-                let (name, definition) = result.unwrap();
-                functions.insert(name, Rc::new(definition));
+                let definition = result.unwrap();
+                functions.insert(definition.id, Rc::new(definition));
             }
             Some(Rules::TypeDef) => {
-                let result = type_definition_repr(node);
+                let result = type_definition_repr(node, identifier_id_map);
                 if result.is_err() {
                     return Err(result.unwrap_err());
                 }
@@ -618,7 +691,11 @@ pub fn to_repr(ast: &AST<Rules>) -> Result<Program, String> {
         }
     }
 
-    Ok(Program { functions, types })
+    Ok(Program {
+        functions,
+        types,
+        identifier_id_map: identifier_id_map.clone(),
+    })
 }
 
 #[cfg(test)]
@@ -626,9 +703,10 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::{
-        compiler::{grammar::program_parser, internal_repr::to_repr},
-        parser::combinators::ParserCombinator,
-        parser::token_stream::TokenStream,
+        compiler::{
+            grammar::program_parser, identifier_map::IdentifierIdMap, internal_repr::to_repr,
+        },
+        parser::{combinators::ParserCombinator, token_stream::TokenStream},
     };
 
     #[test]
@@ -646,7 +724,8 @@ mod tests {
         assert!(result.result);
         print!("{}", result.ast);
 
-        let result = to_repr(&result.ast);
+        let mut identifier_id_map = IdentifierIdMap::new();
+        let result = to_repr(&result.ast, &mut identifier_id_map);
         if result.is_err() {
             panic!("{:?}", result.unwrap_err());
         }
