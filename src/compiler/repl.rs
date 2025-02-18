@@ -9,8 +9,8 @@ use crate::parser::combinators::ParserCombinator;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, BOOL_ID, DIV_ID, EQ_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID,
-    LT_ID, MUL_ID, PRINT_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
+    IdentifierId, ADD_ID, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID,
+    INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -25,6 +25,7 @@ enum Value {
     Integer(i64),
     Float(f32),
     Bool(bool),
+    String(Rc<String>),
     Function(Rc<FunctionDefinition>),
     Void,
 }
@@ -45,6 +46,7 @@ impl Display for Value {
             Value::Integer(n) => write!(f, "{n}"),
             Value::Float(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
+            Value::String(s) => write!(f, "{}", &s.to_string()[1..s.len()-1]),
             Value::Void => write!(f, "Void"),
         }
     }
@@ -76,6 +78,7 @@ impl Value {
             Value::Integer(x) => Ok(format!("{x}")),
             Value::Float(x) => Ok(format!("{x}")),
             Value::Bool(x) => Ok(format!("{x}")),
+            Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len()-1])),
             Value::Void => Ok("Void".to_string()),
         }
     }
@@ -106,15 +109,6 @@ impl PatternMatchResult {
 pub struct REPL {
     program: Program,
     type_info: TypeInfo,
-}
-
-fn range(n: usize) -> Vec<i64> {
-    if n == 0 {
-        return Vec::new();
-    }
-    let mut v = range(n - 1);
-    v.push(n as i64);
-    return v;
 }
 
 impl REPL {
@@ -185,10 +179,6 @@ impl REPL {
                 if result.is_ok() {
                     //println!("{}", result.unwrap());
                     println!("Evaluated in {}us", start.elapsed().as_micros());
-
-                    let start = Instant::now();
-                    let x = range(1000);
-                    println!("Evaluated{} in {}us", x.len(), start.elapsed().as_micros());
                 } else {
                     println!("ERROR: {}", result.unwrap_err());
                 }
@@ -234,22 +224,17 @@ impl REPL {
                                 }
                             }
                         }
-                        Value::Integer(_) => {
+                        Value::Integer(_)
+                        | Value::Float(_)
+                        | Value::Function(_)
+                        | Value::String(_) => {
                             //todo: multiple "_" should also be considered wildcard
                             if *identifier != WILDCARD_ID {
-                                return Err(format!("Redundant re-binding '{}' of integer argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
-                            }
-                        }
-                        Value::Float(_) => {
-                            //todo: multiple "_" should also be considered wildcard
-                            if *identifier != WILDCARD_ID {
-                                return Err(format!("Redundant re-binding '{}' of float argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
-                            }
-                        }
-                        Value::Function(_) => {
-                            //todo: multiple "_" should also be considered wildcard
-                            if *identifier != WILDCARD_ID {
-                                return Err(format!("Redundant re-binding '{}' of function argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
+                                return Err(format!(
+                                    "Redundant re-binding '{}' of argument {i} in function '{}'",
+                                    self.program.var_name(identifier),
+                                    self.program.var_name(function_id)
+                                ));
                             }
                         }
                         Value::Bool(bool_val) => {
@@ -306,6 +291,7 @@ impl REPL {
                         }
                     }
                     Value::Integer(_) => return Err(format!("Cannot destructure Int")),
+                    Value::String(_) => return Err(format!("Cannot destructure String")),
                     Value::Float(_) => return Err(format!("Cannot destructure Float")),
                     Value::Bool(_) => return Err(format!("Cannot destructure Bool")),
                     Value::Function(_) => return Err(format!("Cannot destructure Function")),
@@ -323,6 +309,7 @@ impl REPL {
                             return Ok(PatternMatchResult::no_match());
                         }
                     }
+                    Value::String(_) => return Err(format!("String cannot be matched to Int")),
                     Value::Float(_) => return Err(format!("Float cannot be matched to Int")),
                     Value::Bool(_) => return Err(format!("Bool cannot be matched to Int")),
                     Value::Function(_) => return Err(format!("Function cannot be matched to Int")),
@@ -341,9 +328,30 @@ impl REPL {
                         }
                     }
                     Value::Integer(_) => return Err(format!("Int cannot be matched to Float")),
+                    Value::String(_) => return Err(format!("String cannot be matched to Float")),
                     Value::Bool(_) => return Err(format!("Bool cannot be matched to Float")),
                     Value::Function(_) => {
                         return Err(format!("Function cannot be matched to Float"))
+                    }
+                    Value::Void => return Err(format!("Arg is Void")),
+                },
+                DestructuringComponent::String(pattern_val) => match arg.as_ref() {
+                    Value::Typed(id, _, _) => {
+                        return Err(format!(
+                            "Type '{}' cannot be matched to Float",
+                            self.program.var_name(&id)
+                        ));
+                    }
+                    Value::String(arg_val) => {
+                        if pattern_val != arg_val {
+                            return Ok(PatternMatchResult::no_match());
+                        }
+                    }
+                    Value::Integer(_) => return Err(format!("Int cannot be matched to String")),
+                    Value::Float(_) => return Err(format!("Float cannot be matched to String")),
+                    Value::Bool(_) => return Err(format!("Bool cannot be matched to String")),
+                    Value::Function(_) => {
+                        return Err(format!("Function cannot be matched to String"))
                     }
                     Value::Void => return Err(format!("Arg is Void")),
                 },
@@ -588,6 +596,12 @@ impl REPL {
                                 return Err(format!("Argument '{}' in function '{}' has type 'Float' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
                             }
                         },
+                        Value::String(_) => match arg_type.as_ref() {
+                            Type::SimpleType(id) if *id == STRING_ID => {}
+                            _ => {
+                                return Err(format!("Argument '{}' in function '{}' has type 'String' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
+                            }
+                        },
                         Value::Bool(_) => match arg_type.as_ref() {
                             Type::SimpleType(id) if *id == BOOL_ID => {}
                             _ => {
@@ -736,6 +750,7 @@ impl REPL {
                 ))
             }
             Expression::Integer(x) => Ok(Rc::new(Value::Integer(*x))),
+            Expression::String(x) => Ok(Rc::new(Value::String(Rc::clone(x)))),
             Expression::Float(x) => Ok(Rc::new(Value::Float(*x))),
             Expression::LambdaExpression(function_definition) => {
                 Ok(Rc::new(Value::Function(Rc::clone(function_definition))))

@@ -302,6 +302,7 @@ fn infer_expression_type(
             }
         }
         Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
+        Expression::String(_) => Ok(Rc::new(Type::SimpleType(STRING_ID))),
         Expression::Float(_) => Ok(Rc::new(Type::SimpleType(FLOAT_ID))),
         Expression::LambdaExpression(function_definition) => {
             infer_function_type(program, type_info, &function_definition)

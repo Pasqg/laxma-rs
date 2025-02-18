@@ -110,6 +110,7 @@ pub(super) enum DestructuringComponent {
     Destructuring(Destructuring),
     Integer(i64),
     Float(f32),
+    String(Rc<String>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -376,6 +377,7 @@ pub fn expression_repr(
         Some(Rules::Integer) => Ok(Expression::Integer(
             ast.matched[0].unwrap_str().parse().unwrap(),
         )),
+        Some(Rules::String) => Ok(Expression::String(Rc::new(ast.matched[0].unwrap_str()))),
         Some(Rules::Float) => Ok(Expression::Float(
             ast.matched[0].unwrap_str().parse().unwrap(),
         )),
@@ -518,6 +520,9 @@ fn pattern_matching_repr(
                     Some(Rules::Integer) => DestructuringComponent::Integer(
                         component.matched[0].unwrap_str().parse().unwrap(),
                     ),
+                    Some(Rules::String) => {
+                        DestructuringComponent::String(Rc::new(component.matched[0].unwrap_str()))
+                    }
                     Some(Rules::Float) => DestructuringComponent::Float(
                         component.matched[0].unwrap_str().parse().unwrap(),
                     ),

@@ -47,6 +47,10 @@ fn identifier() -> Combinators<Rules> {
     )
 }
 
+fn string() -> Combinators<Rules> {
+    Combinators::MatchRegex(MatchRegex::new(Some(Rules::String), r#"\"[^\"]*\""#))
+}
+
 fn integer() -> Combinators<Rules> {
     Combinators::MatchRegex(MatchRegex::new(Some(Rules::Integer), r"[\-\+]?[0-9]+"))
 }
@@ -101,7 +105,11 @@ fn type_name() -> Combinators<Rules> {
             ],
         )
     };
-    type_name.bind(or_match_flat(vec![function_type(), parametrized_type(), basic_type_name()]));
+    type_name.bind(or_match_flat(vec![
+        function_type(),
+        parametrized_type(),
+        basic_type_name(),
+    ]));
     type_name
 }
 
@@ -186,13 +194,18 @@ pub fn expression_parser() -> Combinators<Rules> {
         )
     };
 
-    let lambda_expression = || and_match(Rules::LambdaExpression, vec![
-        slit("("),
-        many(Some(Rules::Arguments), argument(), None),
-        slit(")"),
-        slit("->"),
-        expression.clone(),
-    ]);
+    let lambda_expression = || {
+        and_match(
+            Rules::LambdaExpression,
+            vec![
+                slit("("),
+                many(Some(Rules::Arguments), argument(), None),
+                slit(")"),
+                slit("->"),
+                expression.clone(),
+            ],
+        )
+    };
 
     let expression_body = or_match(
         Rules::Expression,
@@ -203,6 +216,7 @@ pub fn expression_parser() -> Combinators<Rules> {
             function_call(),
             type_constructor(),
             identifier(),
+            string(),
             float(),
             integer(),
         ],
@@ -227,7 +241,7 @@ fn function_pattern_matching() -> Combinators<Rules> {
                     vec![
                         at_least_one(
                             None,
-                            or_match_flat(vec![destructuring(), identifier(), float(), integer()]),
+                            or_match_flat(vec![destructuring(), identifier(), string(), float(), integer()]),
                             Some(slit(",")),
                         ),
                         function_body(),
