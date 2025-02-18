@@ -482,7 +482,7 @@ impl REPL {
                     ),
                 }
             }
-            PRINT_ID => {
+            PRINT_ID | ERROR_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
                 for param in &function_call.parameters {
@@ -499,8 +499,15 @@ impl REPL {
                     }
                     i += 1;
                 }
-                println!("{}", values.join(" "));
-                Ok(Rc::new(Value::Void))
+
+                match function_call.id {
+                    PRINT_ID => {
+                        println!("{}", values.join(" "));
+                        Ok(Rc::new(Value::Void))
+                    }
+                    ERROR_ID => Err(format!("{}", values.join(" "))),
+                    _ => panic!("Shouldn't happen"),
+                }
             }
             _ => {
                 let mut definition = self.program.functions.get(&function_call.id);
@@ -587,25 +594,25 @@ impl REPL {
                         Value::Integer(_) => match arg_type.as_ref() {
                             Type::SimpleType(id) if *id == INT_ID => {}
                             _ => {
-                                return Err(format!("Argument '{}' in function '{}' has type 'Int' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
+                                return Err(format!("Argument '{}' in function '{}' has type '{}' but 'Int' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_type.id())));
                             }
                         },
                         Value::Float(_) => match arg_type.as_ref() {
                             Type::SimpleType(id) if *id == FLOAT_ID => {}
                             _ => {
-                                return Err(format!("Argument '{}' in function '{}' has type 'Float' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
+                                return Err(format!("Argument '{}' in function '{}' has type '{}' but 'Float' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_type.id())));
                             }
                         },
                         Value::String(_) => match arg_type.as_ref() {
                             Type::SimpleType(id) if *id == STRING_ID => {}
                             _ => {
-                                return Err(format!("Argument '{}' in function '{}' has type 'String' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
+                                return Err(format!("Argument '{}' in function '{}' has type '{}' but 'String' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_type.id())));
                             }
                         },
                         Value::Bool(_) => match arg_type.as_ref() {
                             Type::SimpleType(id) if *id == BOOL_ID => {}
                             _ => {
-                                return Err(format!("Argument '{}' in function '{}' has type 'Bool' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
+                                return Err(format!("Argument '{}' in function '{}' has type '{}' but 'Bool' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_type.id())));
                             }
                         },
                         Value::Function(def) => match arg_type.as_ref() {

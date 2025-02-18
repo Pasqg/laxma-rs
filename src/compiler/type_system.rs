@@ -5,7 +5,7 @@ use std::{
 
 use super::{
     identifier_map::{
-        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID
+        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
@@ -27,6 +27,7 @@ impl TypeInfo {
         let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID, FLOAT_ID]);
         let bool_type = Rc::new(Type::SimpleType(BOOL_ID));
         let void_type = Rc::new(Type::SimpleType(VOID_ID));
+        let unknown_type = Rc::new(Type::Unknown);
 
         let int_type = Rc::new(Type::SimpleType(INT_ID));
         let binary_int_type = Rc::new(Type::FunctionType(
@@ -49,6 +50,14 @@ impl TypeInfo {
                         T_VOID_FUNC,
                         vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
                         Rc::clone(&void_type),
+                    )),
+                ),
+                (
+                    ERROR_ID,
+                    Rc::new(Type::FunctionType(
+                        T_VOID_FUNC,
+                        vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
+                        Rc::clone(&unknown_type),
                     )),
                 ),
                 (ADD_ID, Rc::clone(&binary_int_type)),
