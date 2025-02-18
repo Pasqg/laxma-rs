@@ -153,7 +153,7 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::WithBlock,
             vec![
                 slit("with"),
-                many(
+                at_least_one(
                     Some(Rules::Elements),
                     and_match(
                         Rules::Element,
