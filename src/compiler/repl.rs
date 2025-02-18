@@ -9,8 +9,8 @@ use crate::parser::combinators::ParserCombinator;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, BOOL_ID, DIV_ID, EQ_ID, FALSE_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID,
-    MUL_ID, PRINT_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
+    IdentifierId, ADD_ID, BOOL_ID, DIV_ID, EQ_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID,
+    LT_ID, MUL_ID, PRINT_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -19,9 +19,11 @@ use super::internal_repr::{
 use super::type_system::TypeInfo;
 
 #[derive(Clone, Debug)]
+//todo: add Rc<Type> to value to simply error checks
 enum Value {
     Typed(IdentifierId, IdentifierId, Vec<Rc<Value>>),
     Integer(i64),
+    Float(f32),
     Bool(bool),
     Function(Rc<FunctionDefinition>),
     Void,
@@ -41,6 +43,7 @@ impl Display for Value {
             ),
             Value::Function(_) => write!(f, "Function"),
             Value::Integer(n) => write!(f, "{n}"),
+            Value::Float(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Void => write!(f, "Void"),
         }
@@ -71,6 +74,7 @@ impl Value {
             }
             Value::Function(def) => Ok(format!("Function {}", id_to_name(&def.id))),
             Value::Integer(x) => Ok(format!("{x}")),
+            Value::Float(x) => Ok(format!("{x}")),
             Value::Bool(x) => Ok(format!("{x}")),
             Value::Void => Ok("Void".to_string()),
         }
@@ -213,43 +217,51 @@ impl REPL {
             let element = &pattern.components[i];
             let arg = &args[i];
             match element {
-                DestructuringComponent::Identifier(identifier) => match arg.as_ref() {
-                    Value::Typed(id, variant, values) => {
-                        let identifier = *identifier;
-                        if identifier != WILDCARD_ID {
-                            if identifier != *variant {
-                                return Ok(PatternMatchResult::no_match());
-                            }
+                DestructuringComponent::Identifier(identifier) => {
+                    match arg.as_ref() {
+                        Value::Typed(id, variant, values) => {
+                            let identifier = *identifier;
+                            if identifier != WILDCARD_ID {
+                                if identifier != *variant {
+                                    return Ok(PatternMatchResult::no_match());
+                                }
 
-                            if !values.is_empty() {
-                                return Err(format!("Cannot destructure variant '{}' of type '{}' with zero elements, because constructor requires {} arguments",
+                                if !values.is_empty() {
+                                    return Err(format!("Cannot destructure variant '{}' of type '{}' with zero elements, because constructor requires {} arguments",
                                 self.program.var_name(variant),
                                 self.program.var_name(id),
                                 values.len()));
+                                }
                             }
                         }
-                    }
-                    Value::Integer(_) => {
-                        //todo: multiple "_" should also be considered wildcard
-                        if *identifier != WILDCARD_ID {
-                            return Err(format!("Redundant re-binding '{}' of numerical argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
+                        Value::Integer(_) => {
+                            //todo: multiple "_" should also be considered wildcard
+                            if *identifier != WILDCARD_ID {
+                                return Err(format!("Redundant re-binding '{}' of integer argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
+                            }
                         }
-                    }
-                    Value::Function(_) => {
-                        //todo: multiple "_" should also be considered wildcard
-                        if *identifier != WILDCARD_ID {
-                            return Err(format!("Redundant re-binding '{}' of function argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
+                        Value::Float(_) => {
+                            //todo: multiple "_" should also be considered wildcard
+                            if *identifier != WILDCARD_ID {
+                                return Err(format!("Redundant re-binding '{}' of float argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
+                            }
                         }
-                    }
-                    Value::Bool(bool_val) => {
-                        if (*identifier == TRUE_ID && !bool_val)
-                            || (*identifier == FALSE_ID && *bool_val)
-                        {
-                            return Ok(PatternMatchResult::no_match());
+                        Value::Function(_) => {
+                            //todo: multiple "_" should also be considered wildcard
+                            if *identifier != WILDCARD_ID {
+                                return Err(format!("Redundant re-binding '{}' of function argument {i} in function '{}'", self.program.var_name(identifier), self.program.var_name(function_id)));
+                            }
                         }
+                        Value::Bool(bool_val) => {
+                            if (*identifier == TRUE_ID && !bool_val)
+                                || (*identifier == FALSE_ID && *bool_val)
+                            {
+                                return Ok(PatternMatchResult::no_match());
+                            }
+                        }
+                        Value::Void => return Err(format!("Arg is Void")),
                     }
-                    Value::Void => return Err(format!("Arg is Void")),
-                },
+                }
                 DestructuringComponent::Destructuring(destructuring) => match arg.as_ref() {
                     Value::Typed(id, variant, values) => {
                         if *variant != destructuring.0 {
@@ -294,6 +306,7 @@ impl REPL {
                         }
                     }
                     Value::Integer(_) => return Err(format!("Cannot destructure Int")),
+                    Value::Float(_) => return Err(format!("Cannot destructure Float")),
                     Value::Bool(_) => return Err(format!("Cannot destructure Bool")),
                     Value::Function(_) => return Err(format!("Cannot destructure Function")),
                     Value::Void => return Err(format!("Arg is Void")),
@@ -310,8 +323,28 @@ impl REPL {
                             return Ok(PatternMatchResult::no_match());
                         }
                     }
+                    Value::Float(_) => return Err(format!("Float cannot be matched to Int")),
                     Value::Bool(_) => return Err(format!("Bool cannot be matched to Int")),
                     Value::Function(_) => return Err(format!("Function cannot be matched to Int")),
+                    Value::Void => return Err(format!("Arg is Void")),
+                },
+                DestructuringComponent::Float(pattern_val) => match arg.as_ref() {
+                    Value::Typed(id, _, _) => {
+                        return Err(format!(
+                            "Type '{}' cannot be matched to Float",
+                            self.program.var_name(&id)
+                        ));
+                    }
+                    Value::Float(arg_val) => {
+                        if pattern_val != arg_val {
+                            return Ok(PatternMatchResult::no_match());
+                        }
+                    }
+                    Value::Integer(_) => return Err(format!("Int cannot be matched to Float")),
+                    Value::Bool(_) => return Err(format!("Bool cannot be matched to Float")),
+                    Value::Function(_) => {
+                        return Err(format!("Function cannot be matched to Float"))
+                    }
                     Value::Void => return Err(format!("Arg is Void")),
                 },
             }
@@ -334,7 +367,8 @@ impl REPL {
                     ));
                 }
 
-                let mut values = Vec::new();
+                let mut ints = Vec::new();
+                let mut floats = Vec::new();
                 let mut i = 1;
                 for param in &function_call.parameters {
                     let result = self.evaluate_expression(identifier_values, param);
@@ -342,7 +376,8 @@ impl REPL {
                         return result;
                     }
                     match result.unwrap().as_ref() {
-                        Value::Integer(x) => values.push(*x),
+                        Value::Integer(x) => ints.push(*x),
+                        Value::Float(x) => floats.push(*x),
                         _ => {
                             return Err(format!(
                                 "Argument {i} of function '{}' is not numeric",
@@ -351,21 +386,47 @@ impl REPL {
                         }
                     }
                     i += 1;
+                    if !ints.is_empty() && !floats.is_empty() {
+                        return Err(format!(
+                            "Arguments for function '{}' have different numeric types",
+                            self.program.var_name(&function_call.id)
+                        ));
+                    }
                 }
-                match function_call.id {
-                    ADD_ID => Ok(Rc::new(Value::Integer(
-                        values.into_iter().reduce(|acc, x| acc + x).unwrap(),
-                    ))),
-                    SUB_ID => Ok(Rc::new(Value::Integer(
-                        values.into_iter().reduce(|acc, x| acc - x).unwrap(),
-                    ))),
-                    MUL_ID => Ok(Rc::new(Value::Integer(
-                        values.into_iter().reduce(|acc, x| acc * x).unwrap(),
-                    ))),
-                    DIV_ID => Ok(Rc::new(Value::Integer(
-                        values.into_iter().reduce(|acc, x| acc / x).unwrap(),
-                    ))),
-                    _ => panic!("Unhandled arithmetic function {}", function_call.id),
+                if !ints.is_empty() {
+                    let values = ints;
+                    match function_call.id {
+                        ADD_ID => Ok(Rc::new(Value::Integer(
+                            values.into_iter().reduce(|acc, x| acc + x).unwrap(),
+                        ))),
+                        SUB_ID => Ok(Rc::new(Value::Integer(
+                            values.into_iter().reduce(|acc, x| acc - x).unwrap(),
+                        ))),
+                        MUL_ID => Ok(Rc::new(Value::Integer(
+                            values.into_iter().reduce(|acc, x| acc * x).unwrap(),
+                        ))),
+                        DIV_ID => Ok(Rc::new(Value::Integer(
+                            values.into_iter().reduce(|acc, x| acc / x).unwrap(),
+                        ))),
+                        _ => panic!("Unhandled arithmetic function {}", function_call.id),
+                    }
+                } else {
+                    let values = floats;
+                    match function_call.id {
+                        ADD_ID => Ok(Rc::new(Value::Float(
+                            values.into_iter().reduce(|acc, x| acc + x).unwrap(),
+                        ))),
+                        SUB_ID => Ok(Rc::new(Value::Float(
+                            values.into_iter().reduce(|acc, x| acc - x).unwrap(),
+                        ))),
+                        MUL_ID => Ok(Rc::new(Value::Float(
+                            values.into_iter().reduce(|acc, x| acc * x).unwrap(),
+                        ))),
+                        DIV_ID => Ok(Rc::new(Value::Float(
+                            values.into_iter().reduce(|acc, x| acc / x).unwrap(),
+                        ))),
+                        _ => panic!("Unhandled arithmetic function {}", function_call.id),
+                    }
                 }
             }
             GT_ID | LT_ID | EQ_ID | LE_ID | GE_ID => {
@@ -521,6 +582,12 @@ impl REPL {
                                 return Err(format!("Argument '{}' in function '{}' has type 'Int' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
                             }
                         },
+                        Value::Float(_) => match arg_type.as_ref() {
+                            Type::SimpleType(id) if *id == FLOAT_ID => {}
+                            _ => {
+                                return Err(format!("Argument '{}' in function '{}' has type 'Float' but '{}' was provided", self.var_name(&arg_id), self.var_name(&function_call.id), self.var_name(&arg_id)));
+                            }
+                        },
                         Value::Bool(_) => match arg_type.as_ref() {
                             Type::SimpleType(id) if *id == BOOL_ID => {}
                             _ => {
@@ -669,6 +736,7 @@ impl REPL {
                 ))
             }
             Expression::Integer(x) => Ok(Rc::new(Value::Integer(*x))),
+            Expression::Float(x) => Ok(Rc::new(Value::Float(*x))),
             Expression::LambdaExpression(function_definition) => {
                 Ok(Rc::new(Value::Function(Rc::clone(function_definition))))
             }

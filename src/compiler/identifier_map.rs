@@ -25,6 +25,7 @@ pub(super) const BINARY_INT_INT_FUNC: IdentifierId = 18;
 pub(super) const BINARY_INT_BOOL_FUNC: IdentifierId = 19;
 pub(super) const T_TYPE_PARAM_ID: IdentifierId = 20;
 pub(super) const T_VOID_FUNC: IdentifierId = 21;
+pub(super) const FLOAT_ID: IdentifierId = 22;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -49,6 +50,7 @@ impl IdentifierIdMap {
             (Rc::new("print".to_string()), PRINT_ID),
 
             (Rc::new("Int".to_string()), INT_ID),
+            (Rc::new("Float".to_string()), FLOAT_ID),
             (Rc::new("String".to_string()), STRING_ID),
             (Rc::new("Bool".to_string()), BOOL_ID),
             (Rc::new("Void".to_string()), VOID_ID),

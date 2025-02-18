@@ -5,9 +5,7 @@ use std::{
 
 use super::{
     identifier_map::{
-        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID,
-        FALSE_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID,
-        T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID,
+        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
@@ -26,7 +24,7 @@ pub(super) struct TypeInfo {
 
 impl TypeInfo {
     pub fn new() -> Self {
-        let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID]);
+        let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID, FLOAT_ID]);
         let bool_type = Rc::new(Type::SimpleType(BOOL_ID));
         let void_type = Rc::new(Type::SimpleType(VOID_ID));
 
@@ -304,6 +302,7 @@ fn infer_expression_type(
             }
         }
         Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
+        Expression::Float(_) => Ok(Rc::new(Type::SimpleType(FLOAT_ID))),
         Expression::LambdaExpression(function_definition) => {
             infer_function_type(program, type_info, &function_definition)
         }

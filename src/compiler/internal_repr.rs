@@ -104,31 +104,33 @@ pub(super) struct TypeDefinition {
     pub(super) variants: HashMap<IdentifierId, Rc<TypeVariant>>,
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+#[derive(Clone, PartialEq, Debug)]
 pub(super) enum DestructuringComponent {
     Identifier(IdentifierId),
     Destructuring(Destructuring),
     Integer(i64),
+    Float(f32),
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, PartialEq, Clone)]
 pub(super) struct Destructuring(
     pub(super) IdentifierId,
     pub(super) Vec<DestructuringComponent>,
 );
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub(super) struct FunctionCall {
     pub(super) id: IdentifierId,
     pub(super) parameters: Vec<Expression>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub(super) enum Expression {
     TypeConstructor(IdentifierId, IdentifierId, Vec<Expression>),
     FunctionCall(FunctionCall),
     Identifier(IdentifierId),
     Integer(i64),
+    Float(f32),
     WithBlock(Vec<(IdentifierId, Expression)>, Rc<Expression>),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
     LambdaExpression(Rc<FunctionDefinition>),
@@ -140,12 +142,12 @@ pub(super) struct FunctionArgument {
     pub(super) typing: Rc<Type>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub(super) struct Pattern {
     pub(super) components: Vec<DestructuringComponent>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub(super) struct FunctionDefinition {
     pub(super) id: IdentifierId,
     pub(super) arguments: Vec<FunctionArgument>,
@@ -372,7 +374,10 @@ pub fn expression_repr(
             identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
         )),
         Some(Rules::Integer) => Ok(Expression::Integer(
-            ast.matched[0].unwrap_str().parse::<i64>().unwrap(),
+            ast.matched[0].unwrap_str().parse().unwrap(),
+        )),
+        Some(Rules::Float) => Ok(Expression::Float(
+            ast.matched[0].unwrap_str().parse().unwrap(),
         )),
         Some(Rules::FunctionCall) => {
             let mut parameters = Vec::new();
@@ -511,6 +516,9 @@ fn pattern_matching_repr(
                         DestructuringComponent::Destructuring(result.unwrap())
                     }
                     Some(Rules::Integer) => DestructuringComponent::Integer(
+                        component.matched[0].unwrap_str().parse().unwrap(),
+                    ),
+                    Some(Rules::Float) => DestructuringComponent::Float(
                         component.matched[0].unwrap_str().parse().unwrap(),
                     ),
                     _ => {
