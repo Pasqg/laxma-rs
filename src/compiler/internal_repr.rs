@@ -49,6 +49,21 @@ impl Type {
         }
     }
 
+    pub fn full_repr(&self, map: &IdentifierIdMap) -> Rc<String> {
+        match self {
+            Type::ParametrizedType(id, items) => Rc::new(format!(
+                "{}[{}]",
+                map.get_identifier(&id).unwrap(),
+                items
+                    .iter()
+                    .map(|t| map.get_identifier(&t.id()).unwrap().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )),
+            _ => self.name(map),
+        }
+    }
+
     pub fn id(&self) -> IdentifierId {
         match self {
             Type::SimpleType(id) => *id,
@@ -78,7 +93,11 @@ impl Type {
         }
     }
 
-    pub fn create_function_type(identifier_id_map: &mut IdentifierIdMap, types: Vec<Rc<Type>>, return_type: Rc<Type>) -> Type {
+    pub fn create_function_type(
+        identifier_id_map: &mut IdentifierIdMap,
+        types: Vec<Rc<Type>>,
+        return_type: Rc<Type>,
+    ) -> Type {
         let lambda_name_id = identifier_id_map.get_id(&Rc::new(format!(
             "({}) -> {}",
             types
@@ -132,6 +151,7 @@ pub(super) enum Expression {
     Identifier(IdentifierId),
     Integer(i64),
     Float(f32),
+    String(Rc<String>),
     WithBlock(Vec<(IdentifierId, Expression)>, Rc<Expression>),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
     LambdaExpression(Rc<FunctionDefinition>),
@@ -191,30 +211,28 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
         )),
         Some(Rules::ParametrizedType) => {
             let subtype = &ast.children[2];
-            if subtype.id == Some(Rules::Identifier) || subtype.id != Some(Rules::Elements) {
-                let result = type_repr(subtype, identifier_id_map);
-                if result.is_err() {
-                    return Err(result.unwrap_err());
-                }
-                return Ok(Type::ParametrizedType(
-                    identifier_id_map.get_id(&Rc::new(name)),
-                    vec![result.unwrap()],
-                ));
-            }
+            let type_params =
+                if subtype.id == Some(Rules::Identifier) || subtype.id != Some(Rules::Elements) {
+                    let result = type_repr(subtype, identifier_id_map);
+                    if result.is_err() {
+                        return Err(result.unwrap_err());
+                    }
+                    vec![Rc::new(result.unwrap())]
+                } else {
+                    let mut type_params = Vec::new();
+                    for i in (0..subtype.children.len()).step_by(2) {
+                        let result = type_repr(&subtype.children[i], identifier_id_map);
+                        if result.is_err() {
+                            return Err(result.unwrap_err());
+                        }
+                        type_params.push(Rc::new(result.unwrap()));
+                    }
+                    type_params
+                };
 
-            let mut type_params = Vec::new();
-            for i in (0..subtype.children.len()).step_by(2) {
-                let result = type_repr(&subtype.children[i], identifier_id_map);
-                if result.is_err() {
-                    return Err(result.unwrap_err());
-                }
-                type_params.push(result.unwrap());
-            }
+            let id = identifier_id_map.get_id(&Rc::new(name));
 
-            Ok(Type::ParametrizedType(
-                identifier_id_map.get_id(&Rc::new(name)),
-                type_params,
-            ))
+            Ok(Type::ParametrizedType(id, type_params))
         }
         Some(Rules::FunctionType) => {
             let arguments = &ast.children[1];
@@ -233,7 +251,11 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
             }
             let return_type = Rc::new(result.unwrap());
 
-            Ok(Type::create_function_type(identifier_id_map, types, return_type))
+            Ok(Type::create_function_type(
+                identifier_id_map,
+                types,
+                return_type,
+            ))
         }
         _ => Err(format!("Expected a type but got {}", ast)),
     };

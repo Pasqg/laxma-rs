@@ -5,7 +5,9 @@ use std::{
 
 use super::{
     identifier_map::{
-        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID
+        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID,
+        ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID,
+        STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID,
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
@@ -87,24 +89,90 @@ impl TypeInfo {
     }
 }
 
-fn infer_expression_type(
+#[derive(Debug)]
+struct TypeParameterBindings {
+    bindings: HashMap<IdentifierId, Rc<Type>>,
+}
+
+impl TypeParameterBindings {
+    fn new() -> Self {
+        Self {
+            bindings: HashMap::new(),
+        }
+    }
+
+    fn concretize(&self, _type: &Rc<Type>) -> Rc<Type> {
+        match _type.as_ref() {
+            Type::TypeParameter(id) => {
+                let concrete = self.bindings.get(id);
+                if concrete.is_none() {
+                    return Rc::clone(_type);
+                }
+                Rc::clone(concrete.unwrap())
+            }
+            Type::ParametrizedType(id, items) => Rc::new(Type::ParametrizedType(
+                *id,
+                items.iter().map(|t| self.concretize(t)).collect(),
+            )),
+            _ => Rc::clone(_type),
+        }
+    }
+
+    fn are_compatible(&mut self, first: &Rc<Type>, second: &Rc<Type>) -> bool {
+        match (first.as_ref(), second.as_ref()) {
+            (Type::TypeParameter(id1), Type::TypeParameter(id2)) => *id1 == *id2,
+            (Type::TypeParameter(_), _) => {
+                let binding = self.bindings.get(&first.id());
+                if binding.is_some() {
+                    return binding.unwrap().id() == second.id();
+                }
+                self.bindings.insert(first.id(), Rc::clone(second));
+                true
+            }
+            (_, Type::TypeParameter(_)) => {
+                let binding = self.bindings.get(&second.id());
+                if binding.is_some() {
+                    return binding.unwrap().id() == first.id();
+                }
+                self.bindings.insert(second.id(), Rc::clone(first));
+                true
+            }
+            (
+                Type::ParametrizedType(id_first, items_first),
+                Type::ParametrizedType(id_second, items_second),
+            ) => {
+                if *id_first != *id_second || items_first.len() != items_second.len() {
+                    return false;
+                }
+
+                for i in 0..items_first.len() {
+                    if !self.are_compatible(&items_first[i], &items_second[i]) {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+pub fn infer_expression_type(
     program: &mut Program,
     type_info: &TypeInfo,
     identifier_types: &HashMap<IdentifierId, Rc<Type>>,
-    current_function: &FunctionDefinition,
+    current_function_id: &IdentifierId,
     expression: &Expression,
 ) -> Result<Rc<Type>, String> {
     match expression {
         Expression::TypeConstructor(type_id, variant, expressions) => {
-            let function_id = &current_function.id;
-
             let type_variant = {
                 let result = program.types.get(type_id);
                 if result.is_none() {
                     return Err(format!(
                         "Undefined type '{}' in function '{}'",
                         program.var_name(type_id),
-                        program.var_name(function_id),
+                        program.var_name(current_function_id),
                     ));
                 }
 
@@ -116,7 +184,7 @@ fn infer_expression_type(
                         "Undefined variant '{}' for type '{}' in function '{}'",
                         program.var_name(variant),
                         program.var_name(type_id),
-                        program.var_name(function_id)
+                        program.var_name(current_function_id)
                     ));
                 }
                 let type_variant = type_variant.unwrap();
@@ -140,38 +208,50 @@ fn infer_expression_type(
             if expressions.len() > 0 {
                 match type_variant.as_ref() {
                     TypeVariant::Cartesian(variant, items) => {
+                        let mut type_parameter_bindings = TypeParameterBindings::new();
                         for i in 0..expressions.len() {
                             let expression_type = infer_expression_type(
                                 program,
                                 type_info,
                                 identifier_types,
-                                current_function,
+                                current_function_id,
                                 &expressions[i],
                             );
                             if expression_type.is_err() {
                                 return expression_type;
                             }
-
-                            if expression_type.unwrap() != items[i] {
+                            let expression_type = expression_type.unwrap();
+                            if !type_parameter_bindings.are_compatible(&expression_type, &items[i])
+                            {
                                 return Err(format!(
-                                    "Mismatching type in constructor for {}::{variant}",
+                                    "Expecting '{}' in constructor for {}::{variant} but got '{}'",
+                                    &type_parameter_bindings
+                                        .concretize(&items[i])
+                                        .full_repr(&program.identifier_id_map),
                                     program.var_name(type_id),
+                                    type_parameter_bindings
+                                        .concretize(&expression_type)
+                                        .full_repr(&program.identifier_id_map),
                                 ));
                             }
                         }
+
+                        return Ok(Rc::clone(
+                            &type_parameter_bindings
+                                .concretize(&program.types.get(type_id).unwrap().def),
+                        ));
                     }
                     _ => panic!("not possible"),
                 };
             }
 
-            //todo: should use inferred types of expressions in vec to concretized type parameters
             Ok(Rc::clone(&program.types.get(type_id).unwrap().def))
         }
         Expression::FunctionCall(function_call) => {
             let function_type = type_info.function_types.get(&function_call.id);
             if function_type.is_some() {
                 Ok(function_type.unwrap().as_return_type())
-            } else if current_function.id == function_call.id {
+            } else if *current_function_id == function_call.id {
                 Ok(Rc::new(Type::Unknown))
             } else {
                 let id_type = identifier_types.get(&function_call.id);
@@ -224,8 +304,13 @@ fn infer_expression_type(
         Expression::WithBlock(items, expression) => {
             let mut inner_types = identifier_types.clone();
             for (id, expr) in items {
-                let result =
-                    infer_expression_type(program, type_info, &inner_types, current_function, expr);
+                let result = infer_expression_type(
+                    program,
+                    type_info,
+                    &inner_types,
+                    current_function_id,
+                    expr,
+                );
                 if result.is_err() {
                     return result;
                 }
@@ -235,7 +320,7 @@ fn infer_expression_type(
                 program,
                 type_info,
                 identifier_types,
-                current_function,
+                current_function_id,
                 expression.as_ref(),
             )
         }
@@ -244,7 +329,7 @@ fn infer_expression_type(
                 program,
                 type_info,
                 identifier_types,
-                current_function,
+                current_function_id,
                 condition,
             );
             if result.is_err() {
@@ -265,7 +350,7 @@ fn infer_expression_type(
                 program,
                 type_info,
                 identifier_types,
-                current_function,
+                current_function_id,
                 &when_true,
             );
             if true_type.is_err() {
@@ -275,7 +360,7 @@ fn infer_expression_type(
                 program,
                 type_info,
                 identifier_types,
-                current_function,
+                current_function_id,
                 &when_false,
             );
             if false_type.is_err() {
@@ -305,7 +390,7 @@ fn infer_expression_type(
             } else {
                 Err(format!(
                     "Undefined identifier '{var}' in function '{}'. Known {:?}",
-                    program.var_name(&current_function.id),
+                    program.var_name(current_function_id),
                     identifier_types,
                 ))
             }
@@ -375,7 +460,7 @@ pub fn infer_function_type(
             program,
             type_info,
             &arg_types,
-            current_function,
+            &current_function.id,
             &current_function.bodies[0].1,
         );
         if result.is_err() {
@@ -473,7 +558,7 @@ pub fn infer_function_type(
                 program,
                 type_info,
                 &identifier_types,
-                current_function,
+                &current_function.id,
                 &expression,
             );
             if result.is_err() {

@@ -27,6 +27,7 @@ pub(super) const T_TYPE_PARAM_ID: IdentifierId = 20;
 pub(super) const T_VOID_FUNC: IdentifierId = 21;
 pub(super) const FLOAT_ID: IdentifierId = 22;
 pub(super) const ERROR_ID: IdentifierId = 23;
+pub(super) const REPL_ID: IdentifierId = 24;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -39,6 +40,7 @@ impl IdentifierIdMap {
     pub fn new() -> Self {
         let id_map = HashMap::from([
             (Rc::new("Undefined".to_string()), UNDEFINED_ID),
+            (Rc::new("REPL".to_string()), REPL_ID),
             (Rc::new("+".to_string()), ADD_ID),
             (Rc::new("-".to_string()), SUB_ID),
             (Rc::new("*".to_string()), MUL_ID),

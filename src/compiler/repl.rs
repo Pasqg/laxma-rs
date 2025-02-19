@@ -10,13 +10,13 @@ use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::identifier_map::{
     IdentifierId, ADD_ID, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID,
-    INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
+    INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, REPL_ID, STRING_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
     Program, Type,
 };
-use super::type_system::TypeInfo;
+use super::type_system::{infer_expression_type, TypeInfo};
 
 #[derive(Clone, Debug)]
 //todo: add Rc<Type> to value to simply error checks
@@ -46,7 +46,7 @@ impl Display for Value {
             Value::Integer(n) => write!(f, "{n}"),
             Value::Float(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
-            Value::String(s) => write!(f, "{}", &s.to_string()[1..s.len()-1]),
+            Value::String(s) => write!(f, "{}", &s.to_string()[1..s.len() - 1]),
             Value::Void => write!(f, "Void"),
         }
     }
@@ -78,7 +78,7 @@ impl Value {
             Value::Integer(x) => Ok(format!("{x}")),
             Value::Float(x) => Ok(format!("{x}")),
             Value::Bool(x) => Ok(format!("{x}")),
-            Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len()-1])),
+            Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len() - 1])),
             Value::Void => Ok("Void".to_string()),
         }
     }
@@ -174,13 +174,24 @@ impl REPL {
                     (FALSE_ID, Rc::new(Value::Bool(false))),
                 ]);
                 let start = Instant::now();
-                let result = self.evaluate_expression(&values, &result.unwrap());
+                let expression = result.unwrap();
+                let expr_type = infer_expression_type(
+                    &mut self.program,
+                    &self.type_info,
+                    &self.type_info.constant_types,
+                    &REPL_ID,
+                    &expression,
+                );
+                let result = self.evaluate_expression(&values, &expression);
 
-                if result.is_ok() {
+                if result.is_ok() && expr_type.is_ok() {
                     //println!("{}", result.unwrap());
+                    println!("Type: {}", &expr_type.unwrap().full_repr(&self.program.identifier_id_map));
                     println!("Evaluated in {}us", start.elapsed().as_micros());
-                } else {
+                } else if result.is_err() {
                     println!("ERROR: {}", result.unwrap_err());
+                } else {
+                    println!("ERROR: {}", expr_type.unwrap_err());
                 }
             } else {
                 println!("ERROR(s): {} {}", original_error, result.unwrap_err());
