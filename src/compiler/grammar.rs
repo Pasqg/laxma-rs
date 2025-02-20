@@ -43,7 +43,7 @@ fn identifier() -> Combinators<Rules> {
             Some(Rules::Identifier),
             r"[a-zA-Z?_\+\-\*\/:><=\^][a-zA-Z?_\+\-\*\/:0-9\^=]*",
         )),
-        or_match_flat(vec![slit("fn"), slit("type")]),
+        or_match_flat(vec![slit("fn"), slit("type"), slit("with"), slit("if")]),
     )
 }
 
