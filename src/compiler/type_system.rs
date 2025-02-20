@@ -125,7 +125,18 @@ impl TypeParameterBindings {
 
     fn are_compatible(&mut self, first: &Rc<Type>, second: &Rc<Type>) -> bool {
         match (first.as_ref(), second.as_ref()) {
-            (Type::TypeParameter(id1), Type::TypeParameter(id2)) => *id1 == *id2,
+            (Type::Unknown, Type::Unknown) => false,
+            (Type::Unknown, _) => true,
+            (_, Type::Unknown) => true,
+            (Type::TypeParameter(id1), Type::TypeParameter(id2)) => {
+                if *id1 == *id2 {
+                    return true;
+                }
+
+                self.bindings.insert(first.id(), Rc::clone(second));
+                self.bindings.insert(second.id(), Rc::clone(first));
+                true
+            }
             (Type::TypeParameter(_), _) => {
                 let binding = self.bindings.get(&first.id());
                 if binding.is_some() {
@@ -176,7 +187,7 @@ impl TypeParameterBindings {
                 }
                 true
             }
-            _ => false,
+            _ => first.id() == second.id(),
         }
     }
 }
@@ -211,15 +222,17 @@ fn concretize_function_type(
         let arg_type = &arguments[i];
         if !type_parameters_bindings.are_compatible(arg_type, &provided_type) {
             return Err(format!(
-                "Argument {} in function '{}' has type '{}' but '{}' was provided",
+                "Argument {} in function '{}' has type '{}' ('{}') but '{}' ('{}') was provided",
                 i,
                 program.var_name(function_id),
                 type_parameters_bindings
                     .concretize(arg_type)
                     .full_repr(&program.identifier_id_map),
+                arg_type.full_repr(&program.identifier_id_map),
                 type_parameters_bindings
                     .concretize(&provided_type)
                     .full_repr(&program.identifier_id_map),
+                provided_type.full_repr(&program.identifier_id_map),
             ));
         }
     }
@@ -591,6 +604,10 @@ pub fn infer_function_type(
         )))
     } else {
         let mut branch_types = HashSet::new();
+
+        let mut type_parameters_bindings = TypeParameterBindings::new();
+        let mut all_compatible = true;
+        let mut previous_branch_type = None;
         for (destructuring, expression) in &current_function.bodies {
             let mut identifier_types = HashMap::new();
             for (k, v) in &arg_types {
@@ -673,20 +690,28 @@ pub fn infer_function_type(
             if result.is_err() {
                 return Err(result.unwrap_err());
             }
-            branch_types.insert(result.unwrap());
+
+            let branch_type = result.unwrap();
+            branch_types.insert(Rc::clone(&branch_type));
+
+            if previous_branch_type.is_some() && !type_parameters_bindings.are_compatible(&previous_branch_type.unwrap(), &branch_type) {
+                all_compatible = false;
+            }
+
+            previous_branch_type = Some(Rc::clone(&branch_type));
         }
 
-        match (branch_types.len(), branch_types.contains(&Type::Unknown)) {
-            (1, true) => Err(format!(
+        match (branch_types.len(), all_compatible ) {
+            (1, false) => Err(format!(
                 "Cannot infer type of function {}, possibly infinite recursion?",
                 program.var_name(function_id),
             )),
-            (1, false) => Ok(Rc::new(Type::create_function_type(
+            (1, true) => Ok(Rc::new(Type::create_function_type(
                 &mut program.identifier_id_map,
                 function_type_args,
                 Rc::clone(branch_types.iter().next().unwrap()),
             ))),
-            (2, true) => Ok(Rc::new(Type::create_function_type(
+            (_, true) => Ok(Rc::new(Type::create_function_type(
                 &mut program.identifier_id_map,
                 function_type_args,
                 Rc::clone(
