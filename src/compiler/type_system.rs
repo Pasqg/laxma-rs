@@ -419,7 +419,7 @@ pub fn infer_function_type(
             Type::SimpleType(_) | Type::ParametrizedType(_, _) => {
                 let id = argument.typing.id();
                 if !type_info.type_exists(&id) {
-                    return Err(format!("'{}' is not a valid type", program.var_name(&id)));
+                    return Err(format!("[1] '{}' doesn't exist", program.var_name(&id)));
                 }
             }
             Type::Unknown => panic!(
@@ -428,18 +428,18 @@ pub fn infer_function_type(
             ),
             Type::FunctionType(_, args, return_type) => {
                 for arg_type in args {
-                    if !type_info.type_exists(&arg_type.id()) {
+                    if !arg_type.is_type_parameter() && !type_info.type_exists(&arg_type.id()) {
                         return Err(format!(
-                            "'{}' is not a valid type",
+                            "[2] '{}' doesn't exist",
                             program.var_name(&arg_type.id())
                         ));
                     }
                 }
 
                 let return_id = return_type.id();
-                if !type_info.type_exists(&return_id) {
+                if !return_type.is_type_parameter() && !type_info.type_exists(&return_id) {
                     return Err(format!(
-                        "'{}' is not a valid type",
+                        "[3] '{}' doesn't exist",
                         program.var_name(&return_id)
                     ));
                 }
