@@ -434,7 +434,7 @@ pub fn infer_expression_type(
             infer_expression_type(
                 program,
                 type_info,
-                identifier_types,
+                &inner_types,
                 current_function_id,
                 expression.as_ref(),
             )
@@ -510,7 +510,13 @@ pub fn infer_expression_type(
                     "Undefined identifier '{}' in function '{}'. Known {:?}",
                     program.var_name(id),
                     program.var_name(current_function_id),
-                    identifier_types,
+                    identifier_types
+                        .iter()
+                        .map(|(k, v)| (
+                            program.var_name(k),
+                            v.full_repr(&program.identifier_id_map)
+                        ))
+                        .collect::<Vec<(&Rc<String>, Rc<String>)>>(),
                 ));
             }
             let function_def = Rc::clone(&function_def.unwrap());
@@ -694,14 +700,17 @@ pub fn infer_function_type(
             let branch_type = result.unwrap();
             branch_types.insert(Rc::clone(&branch_type));
 
-            if previous_branch_type.is_some() && !type_parameters_bindings.are_compatible(&previous_branch_type.unwrap(), &branch_type) {
+            if previous_branch_type.is_some()
+                && !type_parameters_bindings
+                    .are_compatible(&previous_branch_type.unwrap(), &branch_type)
+            {
                 all_compatible = false;
             }
 
             previous_branch_type = Some(Rc::clone(&branch_type));
         }
 
-        match (branch_types.len(), all_compatible ) {
+        match (branch_types.len(), all_compatible) {
             (1, false) => Err(format!(
                 "Cannot infer type of function {}, possibly infinite recursion?",
                 program.var_name(function_id),
