@@ -18,7 +18,7 @@ use super::{
 pub(super) enum Type {
     SimpleType(IdentifierId),
     TypeParameter(IdentifierId),
-    ParametrizedType(IdentifierId, Vec<Type>),
+    ParametrizedType(IdentifierId, Vec<Rc<Type>>),
     // IdentifierId is the id of the type name, not the name of the function
     FunctionType(IdentifierId, Vec<Rc<Type>>, Rc<Type>),
     Unknown,
@@ -28,6 +28,13 @@ impl Type {
     pub fn is_unknown(&self) -> bool {
         match self {
             Type::Unknown => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_type_parameter(&self) -> bool {
+        match self {
+            Type::TypeParameter(_) => true,
             _ => false,
         }
     }

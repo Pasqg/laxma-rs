@@ -103,6 +103,11 @@ impl TypeParameterBindings {
 
     fn concretize(&self, _type: &Rc<Type>) -> Rc<Type> {
         match _type.as_ref() {
+            Type::FunctionType(id, inputs, outputs) => Rc::new(Type::FunctionType(
+                *id,
+                inputs.iter().map(|t| self.concretize(t)).collect(),
+                self.concretize(outputs),
+            )),
             Type::TypeParameter(id) => {
                 let concrete = self.bindings.get(id);
                 if concrete.is_none() {
@@ -138,6 +143,25 @@ impl TypeParameterBindings {
                 true
             }
             (
+                Type::FunctionType(_, first_inputs, first_output),
+                Type::FunctionType(_, second_inputs, second_output),
+            ) => {
+                if first_inputs.len() != second_inputs.len() {
+                    return false;
+                }
+
+                for i in 0..first_inputs.len() {
+                    let first_type = &first_inputs[i];
+                    let second_type = &second_inputs[i];
+
+                    if !self.are_compatible(first_type, second_type) {
+                        return false;
+                    }
+                }
+
+                self.are_compatible(first_output, second_output)
+            }
+            (
                 Type::ParametrizedType(id_first, items_first),
                 Type::ParametrizedType(id_second, items_second),
             ) => {
@@ -155,6 +179,54 @@ impl TypeParameterBindings {
             _ => false,
         }
     }
+}
+
+fn concretize_function_type(
+    program: &mut Program,
+    type_info: &TypeInfo,
+    identifier_types: &HashMap<IdentifierId, Rc<Type>>,
+    function_id: &IdentifierId,
+    function_type: &Rc<Type>,
+    arguments: &Vec<Rc<Type>>,
+    parameters: &Vec<Expression>,
+) -> Result<Rc<Type>, String> {
+    let mut type_parameters_bindings = TypeParameterBindings::new();
+    if parameters.len() != arguments.len() {
+        return Err(format!(
+            "Function '{}' expects {} arguments but {} were provided",
+            program.var_name(function_id),
+            arguments.len(),
+            parameters.len()
+        ));
+    }
+    for i in 0..parameters.len() {
+        let arg_expr = &parameters[i];
+        let provided_type =
+            infer_expression_type(program, type_info, identifier_types, function_id, arg_expr);
+        if provided_type.is_err() {
+            return provided_type;
+        }
+
+        let provided_type = provided_type.unwrap();
+        let arg_type = &arguments[i];
+        if !type_parameters_bindings.are_compatible(arg_type, &provided_type) {
+            return Err(format!(
+                "Argument {} in function '{}' has type '{}' but '{}' was provided",
+                i,
+                program.var_name(function_id),
+                type_parameters_bindings
+                    .concretize(arg_type)
+                    .full_repr(&program.identifier_id_map),
+                type_parameters_bindings
+                    .concretize(&provided_type)
+                    .full_repr(&program.identifier_id_map),
+            ));
+        }
+    }
+
+    Ok(type_parameters_bindings
+        .concretize(function_type)
+        .as_return_type())
 }
 
 pub fn infer_expression_type(
@@ -241,7 +313,7 @@ pub fn infer_expression_type(
                                 .concretize(&program.types.get(type_id).unwrap().def),
                         ));
                     }
-                    _ => panic!("not possible"),
+                    _ => panic!("BUG"),
                 };
             }
 
@@ -250,7 +322,38 @@ pub fn infer_expression_type(
         Expression::FunctionCall(function_call) => {
             let function_type = type_info.function_types.get(&function_call.id);
             if function_type.is_some() {
-                Ok(function_type.unwrap().as_return_type())
+                let function_type = function_type.unwrap();
+
+                let function_definition = program.functions.get(&function_call.id);
+                if function_definition.is_some() {
+                    let function_definition = Rc::clone(function_definition.unwrap());
+                    concretize_function_type(
+                        program,
+                        type_info,
+                        identifier_types,
+                        current_function_id,
+                        function_type,
+                        &function_definition
+                            .arguments
+                            .iter()
+                            .map(|arg| Rc::clone(&arg.typing))
+                            .collect(),
+                        &function_call.parameters,
+                    )
+                } else {
+                    match function_type.as_ref() {
+                        Type::FunctionType(_, inputs, _) => concretize_function_type(
+                            program,
+                            type_info,
+                            identifier_types,
+                            current_function_id,
+                            function_type,
+                            &inputs,
+                            &function_call.parameters,
+                        ),
+                        _ => panic!("BUG"),
+                    }
+                }
             } else if *current_function_id == function_call.id {
                 Ok(Rc::new(Type::Unknown))
             } else {
@@ -272,14 +375,13 @@ pub fn infer_expression_type(
 
                 let function_definition = program.functions.get(&function_call.id);
                 if function_definition.is_some() {
-                    let function_type = infer_function_type(
-                        program,
-                        type_info,
-                        &Rc::clone(function_definition.unwrap()),
-                    );
+                    let function_definition = Rc::clone(function_definition.unwrap());
+                    let function_type =
+                        infer_function_type(program, type_info, &Rc::clone(&function_definition));
                     if function_type.is_err() {
                         return function_type;
                     }
+
                     let function_type = function_type.unwrap();
                     return match function_type.as_ref() {
                         Type::FunctionType(_, _, return_type) => Ok(Rc::clone(&return_type)),
@@ -383,17 +485,24 @@ pub fn infer_expression_type(
 
             Ok(true_type)
         }
-        Expression::Identifier(var) => {
-            let var_type = identifier_types.get(var);
+        Expression::Identifier(id) => {
+            let var_type = identifier_types.get(id);
             if var_type.is_some() {
-                Ok(var_type.unwrap().to_owned())
-            } else {
-                Err(format!(
-                    "Undefined identifier '{var}' in function '{}'. Known {:?}",
+                return Ok(var_type.unwrap().to_owned());
+            }
+
+            let function_def = program.functions.get(id);
+            if function_def.is_none() {
+                return Err(format!(
+                    "Undefined identifier '{}' in function '{}'. Known {:?}",
+                    program.var_name(id),
                     program.var_name(current_function_id),
                     identifier_types,
-                ))
+                ));
             }
+            let function_def = Rc::clone(&function_def.unwrap());
+
+            infer_function_type(program, type_info, &function_def)
         }
         Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
         Expression::String(_) => Ok(Rc::new(Type::SimpleType(STRING_ID))),
