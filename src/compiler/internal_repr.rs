@@ -14,13 +14,19 @@ use super::{
     identifier_map::{IdentifierId, IdentifierIdMap, UNKNOWN_ID},
 };
 
-#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub(super) enum Type {
     SimpleType(IdentifierId),
     TypeParameter(IdentifierId),
     ParametrizedType(IdentifierId, Vec<Rc<Type>>),
     // IdentifierId is the id of the type name, not the name of the function
-    FunctionType(IdentifierId, Vec<Rc<Type>>, Rc<Type>),
+    // (id, arguments types, return type, captures types)
+    FunctionType(
+        IdentifierId,
+        Vec<Rc<Type>>,
+        Rc<Type>,
+        Option<Rc<HashMap<IdentifierId, Rc<Type>>>>,
+    ),
     Unknown,
 }
 
@@ -41,7 +47,7 @@ impl Type {
 
     pub fn as_return_type(&self) -> Rc<Type> {
         match self {
-            Type::FunctionType(_, _, return_type) => Rc::clone(return_type),
+            Type::FunctionType(_, _, return_type, _) => Rc::clone(return_type),
             _ => panic!("Not a function type: '{:?}'", self),
         }
     }
@@ -51,7 +57,7 @@ impl Type {
             Type::SimpleType(id) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::TypeParameter(id) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::ParametrizedType(id, _) => Rc::clone(map.get_identifier(id).unwrap()),
-            Type::FunctionType(id, _, _) => Rc::clone(map.get_identifier(id).unwrap()),
+            Type::FunctionType(id, _, _, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::Unknown => Rc::new("Unknown".to_string()),
         }
     }
@@ -76,7 +82,7 @@ impl Type {
             Type::SimpleType(id) => *id,
             Type::TypeParameter(id) => *id,
             Type::ParametrizedType(id, _) => *id,
-            Type::FunctionType(id, _, _) => *id,
+            Type::FunctionType(id, _, _, _) => *id,
             Type::Unknown => UNKNOWN_ID,
         }
     }
@@ -95,7 +101,7 @@ impl Type {
                 parameters
             }
             //todo: returns all the type params in inputs and output
-            Type::FunctionType(_, _, _) => HashSet::new(),
+            Type::FunctionType(_, _, _, _) => HashSet::new(),
             Type::Unknown => HashSet::new(),
         }
     }
@@ -104,6 +110,7 @@ impl Type {
         identifier_id_map: &mut IdentifierIdMap,
         types: Vec<Rc<Type>>,
         return_type: Rc<Type>,
+        captures: Option<Rc<HashMap<IdentifierId, Rc<Type>>>>,
     ) -> Type {
         let lambda_name_id = identifier_id_map.get_id(&Rc::new(format!(
             "({}) -> {}",
@@ -114,7 +121,7 @@ impl Type {
                 .join(", "),
             return_type.name(identifier_id_map)
         )));
-        Type::FunctionType(lambda_name_id, types, return_type)
+        Type::FunctionType(lambda_name_id, types, return_type, captures.clone())
     }
 }
 
@@ -128,6 +135,12 @@ pub(super) enum TypeVariant {
 pub(super) struct TypeDefinition {
     pub(super) def: Rc<Type>,
     pub(super) variants: HashMap<IdentifierId, Rc<TypeVariant>>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub(super) struct SuperDefinition {
+    pub(super) def: Rc<Type>,
+    pub(super) variants: Vec<Rc<Type>>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -262,6 +275,7 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
                 identifier_id_map,
                 types,
                 return_type,
+                None,
             ))
         }
         _ => Err(format!("Expected a type but got {}", ast)),

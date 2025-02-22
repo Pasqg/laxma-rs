@@ -9,24 +9,23 @@ use crate::parser::combinators::ParserCombinator;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID,
-    INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID, REPL_ID, STRING_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
+    IdentifierId, ADD_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID, LT_ID, MUL_ID,
+    PRINT_ID, REPL_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
-    Program, Type,
+    Program,
 };
 use super::type_system::{infer_expression_type, TypeInfo};
 
 #[derive(Clone, Debug)]
-//todo: add Rc<Type> to value to simply error checks
 enum Value {
     Typed(IdentifierId, IdentifierId, Vec<Rc<Value>>),
     Integer(i64),
     Float(f32),
     Bool(bool),
     String(Rc<String>),
-    Function(Rc<FunctionDefinition>),
+    Function(Rc<FunctionDefinition>, Rc<HashMap<IdentifierId, Rc<Value>>>),
     Void,
 }
 
@@ -42,7 +41,7 @@ impl Display for Value {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Value::Function(_) => write!(f, "Function"),
+            Value::Function(_, _) => write!(f, "Function"),
             Value::Integer(n) => write!(f, "{n}"),
             Value::Float(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
@@ -74,7 +73,7 @@ impl Value {
                     args.join(", ")
                 ))
             }
-            Value::Function(def) => Ok(format!("Function {}", id_to_name(&def.id))),
+            Value::Function(def, _) => Ok(format!("Function {}", id_to_name(&def.id))),
             Value::Integer(x) => Ok(format!("{x}")),
             Value::Float(x) => Ok(format!("{x}")),
             Value::Bool(x) => Ok(format!("{x}")),
@@ -150,7 +149,8 @@ impl REPL {
             }
             for key in functions.keys() {
                 let (id, definition) = (key, functions.get(key.as_ref()).unwrap());
-                let result = infer_function_type(&mut self.program, &self.type_info, &definition);
+                let result =
+                    infer_function_type(&mut self.program, &self.type_info, &definition, None);
                 if result.is_err() {
                     println!("ERROR: {}", result.unwrap_err());
                 } else {
@@ -178,15 +178,19 @@ impl REPL {
                 let expr_type = infer_expression_type(
                     &mut self.program,
                     &self.type_info,
-                    &self.type_info.constant_types,
+                    &Rc::clone(&self.type_info.constant_types),
                     &REPL_ID,
                     &expression,
                 );
-                let result = self.evaluate_expression(&values, &expression);
+                let result = self.evaluate_expression(&Rc::new(values), &expression);
 
                 if result.is_ok() && expr_type.is_ok() {
-                    //println!("{}", result.unwrap());
-                    println!("Type: {}", &expr_type.unwrap().full_repr(&self.program.identifier_id_map));
+                    println!(
+                        "Type: {}",
+                        &expr_type
+                            .unwrap()
+                            .full_repr(&self.program.identifier_id_map)
+                    );
                     println!("Evaluated in {}us", start.elapsed().as_micros());
                 } else if result.is_err() {
                     println!("ERROR: {}", result.unwrap_err());
@@ -237,7 +241,7 @@ impl REPL {
                         }
                         Value::Integer(_)
                         | Value::Float(_)
-                        | Value::Function(_)
+                        | Value::Function(_, _)
                         | Value::String(_) => {
                             //todo: multiple "_" should also be considered wildcard
                             if *identifier != WILDCARD_ID {
@@ -305,7 +309,7 @@ impl REPL {
                     Value::String(_) => return Err(format!("Cannot destructure String")),
                     Value::Float(_) => return Err(format!("Cannot destructure Float")),
                     Value::Bool(_) => return Err(format!("Cannot destructure Bool")),
-                    Value::Function(_) => return Err(format!("Cannot destructure Function")),
+                    Value::Function(_, _) => return Err(format!("Cannot destructure Function")),
                     Value::Void => return Err(format!("Arg is Void")),
                 },
                 DestructuringComponent::Integer(pattern_val) => match arg.as_ref() {
@@ -323,7 +327,9 @@ impl REPL {
                     Value::String(_) => return Err(format!("String cannot be matched to Int")),
                     Value::Float(_) => return Err(format!("Float cannot be matched to Int")),
                     Value::Bool(_) => return Err(format!("Bool cannot be matched to Int")),
-                    Value::Function(_) => return Err(format!("Function cannot be matched to Int")),
+                    Value::Function(_, _) => {
+                        return Err(format!("Function cannot be matched to Int"))
+                    }
                     Value::Void => return Err(format!("Arg is Void")),
                 },
                 DestructuringComponent::Float(pattern_val) => match arg.as_ref() {
@@ -341,7 +347,7 @@ impl REPL {
                     Value::Integer(_) => return Err(format!("Int cannot be matched to Float")),
                     Value::String(_) => return Err(format!("String cannot be matched to Float")),
                     Value::Bool(_) => return Err(format!("Bool cannot be matched to Float")),
-                    Value::Function(_) => {
+                    Value::Function(_, _) => {
                         return Err(format!("Function cannot be matched to Float"))
                     }
                     Value::Void => return Err(format!("Arg is Void")),
@@ -361,7 +367,7 @@ impl REPL {
                     Value::Integer(_) => return Err(format!("Int cannot be matched to String")),
                     Value::Float(_) => return Err(format!("Float cannot be matched to String")),
                     Value::Bool(_) => return Err(format!("Bool cannot be matched to String")),
-                    Value::Function(_) => {
+                    Value::Function(_, _) => {
                         return Err(format!("Function cannot be matched to String"))
                     }
                     Value::Void => return Err(format!("Arg is Void")),
@@ -374,7 +380,7 @@ impl REPL {
     fn evaluate_function_call(
         &mut self,
         function_call: &FunctionCall,
-        identifier_values: &HashMap<IdentifierId, Rc<Value>>,
+        identifier_values: &Rc<HashMap<IdentifierId, Rc<Value>>>,
     ) -> Result<Rc<Value>, String> {
         match function_call.id {
             ADD_ID | SUB_ID | MUL_ID | DIV_ID => {
@@ -521,6 +527,7 @@ impl REPL {
                 }
             }
             _ => {
+                let mut captures = identifier_values.as_ref().clone();
                 let mut definition = self.program.functions.get(&function_call.id);
                 if definition.is_none() {
                     let function_value = identifier_values.get(&function_call.id);
@@ -532,8 +539,11 @@ impl REPL {
                     }
 
                     match function_value.unwrap().as_ref() {
-                        Value::Function(function_definition) => {
+                        Value::Function(function_definition, lambda_captures) => {
                             definition = Some(function_definition);
+                            for (k, v) in lambda_captures.as_ref() {
+                                captures.insert(*k, Rc::clone(v));
+                            }
                         }
                         _ => {
                             return Err(format!(
@@ -557,12 +567,12 @@ impl REPL {
                     ));
                 }
 
-                let mut arg_values = identifier_values.clone();
+                let captures = Rc::new(captures);
+                let mut arg_values = captures.as_ref().clone();
                 let mut ordered_arg_values = Vec::new();
                 for i in 0..actual_arg_num {
                     // Evaluate parameter value
-                    let result =
-                        self.evaluate_expression(&identifier_values, &function_call.parameters[i]);
+                    let result = self.evaluate_expression(&captures, &function_call.parameters[i]);
                     if result.is_err() {
                         return result;
                     }
@@ -572,6 +582,7 @@ impl REPL {
                     arg_values.insert(*arg_id, Rc::clone(&value));
                     ordered_arg_values.push(value);
                 }
+                let arg_values = Rc::new(arg_values);
 
                 if definition.is_not_pattern_matched() {
                     return self.evaluate_expression(&arg_values, &definition.bodies[0].1);
@@ -586,11 +597,11 @@ impl REPL {
                     let result = result.unwrap();
                     if result.is_match {
                         return if !result.bindings.is_empty() {
-                            let mut bindings = arg_values.clone();
+                            let mut bindings = arg_values.as_ref().clone();
                             for (k, v) in &result.bindings {
                                 bindings.insert(*k, Rc::clone(v));
                             }
-                            self.evaluate_expression(&bindings, expression)
+                            self.evaluate_expression(&Rc::new(bindings), expression)
                         } else {
                             self.evaluate_expression(&arg_values, expression)
                         };
@@ -615,7 +626,7 @@ impl REPL {
 
     fn evaluate_expression(
         &mut self,
-        identifier_values: &HashMap<IdentifierId, Rc<Value>>,
+        identifier_values: &Rc<HashMap<IdentifierId, Rc<Value>>>,
         expression: &Expression,
     ) -> Result<Rc<Value>, String> {
         match expression {
@@ -636,15 +647,15 @@ impl REPL {
                 self.evaluate_function_call(function_call, identifier_values)
             }
             Expression::WithBlock(items, expression) => {
-                let mut bindings = identifier_values.clone();
+                let mut bindings = identifier_values.as_ref().clone();
                 for (id, expr) in items {
-                    let result = self.evaluate_expression(&bindings, expr);
+                    let result = self.evaluate_expression(&Rc::new(bindings.clone()), expr);
                     if result.is_err() {
                         return result;
                     }
                     bindings.insert(*id, Rc::clone(&result.unwrap()));
                 }
-                return self.evaluate_expression(&bindings, expression);
+                return self.evaluate_expression(&Rc::new(bindings), expression);
             }
             Expression::If(condition, true_branch, false_branch) => {
                 let condition = self.evaluate_expression(identifier_values, condition);
@@ -671,24 +682,38 @@ impl REPL {
 
                 let result = self.program.functions.get(identifier);
                 if result.is_some() {
-                    return Ok(Rc::new(Value::Function(Rc::clone(result.unwrap()))));
+                    return Ok(Rc::new(Value::Function(
+                        Rc::clone(result.unwrap()),
+                        Rc::clone(&identifier_values),
+                    )));
                 }
 
                 Err(format!(
-                    "Unknown identifier '{}'",
-                    self.program.var_name(identifier)
+                    "Unknown identifier '{}', known {:?}",
+                    self.program.var_name(identifier),
+                    identifier_values
+                        .iter()
+                        .map(|(k, _)| self.program.var_name(k))
+                        .collect::<Vec<&Rc<String>>>()
                 ))
             }
             Expression::Integer(x) => Ok(Rc::new(Value::Integer(*x))),
             Expression::String(x) => Ok(Rc::new(Value::String(Rc::clone(x)))),
             Expression::Float(x) => Ok(Rc::new(Value::Float(*x))),
-            Expression::LambdaExpression(function_definition) => {
-                Ok(Rc::new(Value::Function(Rc::clone(function_definition))))
-            }
+            Expression::LambdaExpression(function_definition) => Ok(Rc::new(Value::Function(
+                Rc::clone(function_definition),
+                Rc::clone(&identifier_values),
+            ))),
         }
     }
 
     fn var_name(&self, id: &i32) -> &Rc<String> {
         self.program.identifier_id_map.get_identifier(id).unwrap()
+    }
+
+    fn var_names<T>(&self, c: &HashMap<IdentifierId, T>) -> Vec<&Rc<String>> {
+        c.iter()
+            .map(|(k, _)| self.program.var_name(k))
+            .collect::<Vec<&Rc<String>>>()
     }
 }

@@ -21,7 +21,7 @@ pub(super) struct TypeInfo {
     pub(super) user_types: HashMap<IdentifierId, Rc<Type>>,
     //todo: function_types and constant_types could be part of the same map
     pub(super) function_types: HashMap<IdentifierId, Rc<Type>>,
-    pub(super) constant_types: HashMap<IdentifierId, Rc<Type>>,
+    pub(super) constant_types: Rc<HashMap<IdentifierId, Rc<Type>>>,
 }
 
 impl TypeInfo {
@@ -36,11 +36,13 @@ impl TypeInfo {
             BINARY_INT_INT_FUNC,
             vec![Rc::clone(&int_type), Rc::clone(&int_type)],
             Rc::clone(&int_type),
+            None,
         ));
         let int_comparison_type = Rc::new(Type::FunctionType(
             BINARY_INT_BOOL_FUNC,
             vec![Rc::clone(&int_type), Rc::clone(&int_type)],
             Rc::clone(&bool_type),
+            None,
         ));
         Self {
             primitive_types,
@@ -52,6 +54,7 @@ impl TypeInfo {
                         T_VOID_FUNC,
                         vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
                         Rc::clone(&void_type),
+                        None,
                     )),
                 ),
                 (
@@ -60,6 +63,7 @@ impl TypeInfo {
                         T_VOID_FUNC,
                         vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
                         Rc::clone(&unknown_type),
+                        None,
                     )),
                 ),
                 (ADD_ID, Rc::clone(&binary_int_type)),
@@ -72,10 +76,10 @@ impl TypeInfo {
                 (LT_ID, Rc::clone(&int_comparison_type)),
                 (LE_ID, Rc::clone(&int_comparison_type)),
             ]),
-            constant_types: HashMap::from([
+            constant_types: Rc::new(HashMap::from([
                 (TRUE_ID, Rc::clone(&bool_type)),
                 (FALSE_ID, Rc::clone(&bool_type)),
-            ]),
+            ])),
         }
     }
 
@@ -103,10 +107,11 @@ impl TypeParameterBindings {
 
     fn concretize(&self, _type: &Rc<Type>) -> Rc<Type> {
         match _type.as_ref() {
-            Type::FunctionType(id, inputs, outputs) => Rc::new(Type::FunctionType(
+            Type::FunctionType(id, inputs, outputs, captures) => Rc::new(Type::FunctionType(
                 *id,
                 inputs.iter().map(|t| self.concretize(t)).collect(),
                 self.concretize(outputs),
+                captures.clone(),
             )),
             Type::TypeParameter(id) => {
                 let concrete = self.bindings.get(id);
@@ -154,8 +159,8 @@ impl TypeParameterBindings {
                 true
             }
             (
-                Type::FunctionType(_, first_inputs, first_output),
-                Type::FunctionType(_, second_inputs, second_output),
+                Type::FunctionType(_, first_inputs, first_output, _),
+                Type::FunctionType(_, second_inputs, second_output, _),
             ) => {
                 if first_inputs.len() != second_inputs.len() {
                     return false;
@@ -195,7 +200,7 @@ impl TypeParameterBindings {
 fn concretize_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &HashMap<IdentifierId, Rc<Type>>,
+    identifier_types: &Rc<HashMap<IdentifierId, Rc<Type>>>,
     function_id: &IdentifierId,
     function_type: &Rc<Type>,
     arguments: &Vec<Rc<Type>>,
@@ -245,7 +250,7 @@ fn concretize_function_type(
 pub fn infer_expression_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &HashMap<IdentifierId, Rc<Type>>,
+    identifier_types: &Rc<HashMap<IdentifierId, Rc<Type>>>,
     current_function_id: &IdentifierId,
     expression: &Expression,
 ) -> Result<Rc<Type>, String> {
@@ -355,15 +360,21 @@ pub fn infer_expression_type(
                     )
                 } else {
                     match function_type.as_ref() {
-                        Type::FunctionType(_, inputs, _) => concretize_function_type(
-                            program,
-                            type_info,
-                            identifier_types,
-                            current_function_id,
-                            function_type,
-                            &inputs,
-                            &function_call.parameters,
-                        ),
+                        Type::FunctionType(_, inputs, _, captures) => {
+                            return concretize_function_type(
+                                program,
+                                type_info,
+                                if captures.is_none() {
+                                    identifier_types
+                                } else {
+                                    captures.as_ref().unwrap()
+                                },
+                                current_function_id,
+                                function_type,
+                                &inputs,
+                                &function_call.parameters,
+                            );
+                        }
                         _ => panic!("BUG"),
                     }
                 }
@@ -373,7 +384,7 @@ pub fn infer_expression_type(
                 let id_type = identifier_types.get(&function_call.id);
                 if id_type.is_some() {
                     match id_type.unwrap().as_ref() {
-                        Type::FunctionType(_, _, return_type) => {
+                        Type::FunctionType(_, _, return_type, _) => {
                             return Ok(Rc::clone(return_type));
                         }
                         _ => {
@@ -389,15 +400,19 @@ pub fn infer_expression_type(
                 let function_definition = program.functions.get(&function_call.id);
                 if function_definition.is_some() {
                     let function_definition = Rc::clone(function_definition.unwrap());
-                    let function_type =
-                        infer_function_type(program, type_info, &Rc::clone(&function_definition));
+                    let function_type = infer_function_type(
+                        program,
+                        type_info,
+                        &Rc::clone(&function_definition),
+                        Some(Rc::clone(identifier_types)),
+                    );
                     if function_type.is_err() {
                         return function_type;
                     }
 
                     let function_type = function_type.unwrap();
                     return match function_type.as_ref() {
-                        Type::FunctionType(_, _, return_type) => Ok(Rc::clone(&return_type)),
+                        Type::FunctionType(_, _, return_type, _) => Ok(Rc::clone(&return_type)),
                         _ => Err(format!(
                             "Expected FunctionType but got '{}'",
                             program.var_name(&function_type.id())
@@ -417,12 +432,12 @@ pub fn infer_expression_type(
             }
         }
         Expression::WithBlock(items, expression) => {
-            let mut inner_types = identifier_types.clone();
+            let mut inner_types = identifier_types.as_ref().clone();
             for (id, expr) in items {
                 let result = infer_expression_type(
                     program,
                     type_info,
-                    &inner_types,
+                    &Rc::new(inner_types.clone()),
                     current_function_id,
                     expr,
                 );
@@ -434,7 +449,7 @@ pub fn infer_expression_type(
             infer_expression_type(
                 program,
                 type_info,
-                &inner_types,
+                &Rc::new(inner_types),
                 current_function_id,
                 expression.as_ref(),
             )
@@ -521,14 +536,17 @@ pub fn infer_expression_type(
             }
             let function_def = Rc::clone(&function_def.unwrap());
 
-            infer_function_type(program, type_info, &function_def)
+            infer_function_type(program, type_info, &function_def, None)
         }
         Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
         Expression::String(_) => Ok(Rc::new(Type::SimpleType(STRING_ID))),
         Expression::Float(_) => Ok(Rc::new(Type::SimpleType(FLOAT_ID))),
-        Expression::LambdaExpression(function_definition) => {
-            infer_function_type(program, type_info, &function_definition)
-        }
+        Expression::LambdaExpression(function_definition) => infer_function_type(
+            program,
+            type_info,
+            &function_definition,
+            Some(Rc::clone(identifier_types)),
+        ),
     }
 }
 
@@ -536,11 +554,15 @@ pub fn infer_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
     current_function: &FunctionDefinition,
+    captures: Option<Rc<HashMap<IdentifierId, Rc<Type>>>>,
 ) -> Result<Rc<Type>, String> {
-    let mut arg_types = HashMap::new();
-    for (constant, _type) in &type_info.constant_types {
-        arg_types.insert(*constant, Rc::clone(_type));
+    let mut arg_types = type_info.constant_types.as_ref().clone();
+    if captures.is_some() {
+        for (k, v) in captures.as_ref().unwrap().as_ref() {
+            arg_types.insert(*k, Rc::clone(v));
+        }
     }
+
     for argument in &current_function.arguments {
         match &argument.typing.as_ref() {
             Type::TypeParameter(_) => {}
@@ -554,7 +576,7 @@ pub fn infer_function_type(
                 "Unknown type is invalid for argument '{}' of function '{}'",
                 argument.identifier, current_function.id
             ),
-            Type::FunctionType(_, args, return_type) => {
+            Type::FunctionType(_, args, return_type, _) => {
                 for arg_type in args {
                     if !arg_type.is_type_parameter() && !type_info.type_exists(&arg_type.id()) {
                         return Err(format!(
@@ -576,6 +598,7 @@ pub fn infer_function_type(
 
         arg_types.insert(argument.identifier, Rc::clone(&argument.typing));
     }
+    let arg_types = Rc::new(arg_types);
 
     let function_id = &current_function.id;
     let function_type_args = current_function
@@ -607,18 +630,16 @@ pub fn infer_function_type(
             &mut program.identifier_id_map,
             function_type_args,
             return_type,
+            Some(arg_types),
         )))
     } else {
-        let mut branch_types = HashSet::new();
+        let mut branch_types = Vec::new();
 
         let mut type_parameters_bindings = TypeParameterBindings::new();
         let mut all_compatible = true;
         let mut previous_branch_type = None;
         for (destructuring, expression) in &current_function.bodies {
-            let mut identifier_types = HashMap::new();
-            for (k, v) in &arg_types {
-                identifier_types.insert(*k, Rc::clone(v));
-            }
+            let mut identifier_types = arg_types.as_ref().clone();
 
             let mut i = 0;
             for component in &destructuring.components {
@@ -632,7 +653,6 @@ pub fn infer_function_type(
                             Rc::clone(arg_types.get(&arg.identifier).unwrap()),
                         );
                     }
-                    //todo: don't do this twice in repl maybe?
                     DestructuringComponent::Destructuring(destructuring) => {
                         let result = program.types.get(&arg.typing.id());
                         if result.is_none() {
@@ -689,7 +709,7 @@ pub fn infer_function_type(
             let result: Result<Rc<Type>, String> = infer_expression_type(
                 program,
                 type_info,
-                &identifier_types,
+                &Rc::new(identifier_types),
                 &current_function.id,
                 &expression,
             );
@@ -698,7 +718,7 @@ pub fn infer_function_type(
             }
 
             let branch_type = result.unwrap();
-            branch_types.insert(Rc::clone(&branch_type));
+            branch_types.push(Rc::clone(&branch_type));
 
             if previous_branch_type.is_some()
                 && !type_parameters_bindings
@@ -719,6 +739,7 @@ pub fn infer_function_type(
                 &mut program.identifier_id_map,
                 function_type_args,
                 Rc::clone(branch_types.iter().next().unwrap()),
+                Some(arg_types),
             ))),
             (_, true) => Ok(Rc::new(Type::create_function_type(
                 &mut program.identifier_id_map,
@@ -730,6 +751,7 @@ pub fn infer_function_type(
                         .next()
                         .unwrap(),
                 ),
+                Some(arg_types),
             ))),
             //todo: for N types, as long as none is Unknown, we need to check what's the supertype of all of them (common ancestor in hierarchy tree)
             _ => Err(format!(
