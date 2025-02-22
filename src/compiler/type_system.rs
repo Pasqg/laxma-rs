@@ -508,8 +508,20 @@ pub fn infer_expression_type(
 
             let true_type = true_type.unwrap();
             let false_type = false_type.unwrap();
-            if false_type.is_unknown() || true_type.is_unknown() {
+
+            let is_true_unknown =  true_type.is_unknown();
+            let is_false_unknown = false_type.is_unknown();
+            if is_true_unknown && is_false_unknown {
+                return Err(format!(
+                    "Could not infer return types of if expression in function '{}'",
+                    program.var_name(current_function_id),
+                ));
+            }
+            if is_false_unknown {
                 return Ok(true_type);
+            }
+            if is_true_unknown {
+                return Ok(false_type);
             }
 
             if false_type != true_type {
