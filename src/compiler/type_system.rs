@@ -6,8 +6,8 @@ use std::{
 use super::{
     identifier_map::{
         IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID,
-        ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINT_ID,
-        STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID,
+        ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINTLN_ID,
+        PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID,
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
@@ -50,6 +50,15 @@ impl TypeInfo {
             function_types: HashMap::from([
                 (
                     PRINT_ID,
+                    Rc::new(Type::FunctionType(
+                        T_VOID_FUNC,
+                        vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
+                        Rc::clone(&void_type),
+                        None,
+                    )),
+                ),
+                (
+                    PRINTLN_ID,
                     Rc::new(Type::FunctionType(
                         T_VOID_FUNC,
                         vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],

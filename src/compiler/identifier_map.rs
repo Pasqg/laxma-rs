@@ -28,6 +28,7 @@ pub(super) const T_VOID_FUNC: IdentifierId = 21;
 pub(super) const FLOAT_ID: IdentifierId = 22;
 pub(super) const ERROR_ID: IdentifierId = 23;
 pub(super) const REPL_ID: IdentifierId = 24;
+pub(super) const PRINTLN_ID: IdentifierId = 25;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -51,6 +52,7 @@ impl IdentifierIdMap {
             (Rc::new(">=".to_string()), GE_ID),
             (Rc::new("<=".to_string()), LE_ID),
             (Rc::new("print".to_string()), PRINT_ID),
+            (Rc::new("println".to_string()), PRINTLN_ID),
             (Rc::new("error".to_string()), ERROR_ID),
 
             (Rc::new("Int".to_string()), INT_ID),

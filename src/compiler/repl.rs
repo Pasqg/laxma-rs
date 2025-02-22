@@ -9,8 +9,7 @@ use crate::parser::combinators::ParserCombinator;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID, LT_ID, MUL_ID,
-    PRINT_ID, REPL_ID, SUB_ID, TRUE_ID, WILDCARD_ID,
+    IdentifierId, ADD_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, REPL_ID, SUB_ID, TRUE_ID, WILDCARD_ID
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -186,7 +185,7 @@ impl REPL {
 
                 if result.is_ok() && expr_type.is_ok() {
                     println!(
-                        "Type: {}",
+                        "\nType: {}",
                         &expr_type
                             .unwrap()
                             .full_repr(&self.program.identifier_id_map)
@@ -301,7 +300,7 @@ impl REPL {
                                     }
                                     bindings.insert(x, Rc::clone(value));
                                 }
-                                _ => return Err("Unsupported".to_string()),
+                                _ => return Err("Unsupported destructuring".to_string()),
                             }
                         }
                     }
@@ -499,7 +498,7 @@ impl REPL {
                     ),
                 }
             }
-            PRINT_ID | ERROR_ID => {
+            PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
                 for param in &function_call.parameters {
@@ -519,6 +518,10 @@ impl REPL {
 
                 match function_call.id {
                     PRINT_ID => {
+                        print!("{}", values.join(" "));
+                        Ok(Rc::new(Value::Void))
+                    }
+                    PRINTLN_ID => {
                         println!("{}", values.join(" "));
                         Ok(Rc::new(Value::Void))
                     }
