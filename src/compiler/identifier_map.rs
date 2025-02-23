@@ -34,6 +34,10 @@ pub(super) const WHILE_FUNC_SIGNATURE: IdentifierId = 27;
 pub(super) const T_BOOL_FUNC: IdentifierId = 28;
 pub(super) const T_UNKNOWN_FUNC: IdentifierId = 29;
 pub(super) const T_T_FUNC: IdentifierId = 30;
+pub(super) const RANGE_SIGNATURE: IdentifierId = 31;
+pub(super) const RANGE_ID: IdentifierId = 32;
+pub(super) const LIST_ID: IdentifierId = 33;
+pub(super) const EMPTY_LIST_ID: IdentifierId = 34;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -59,8 +63,8 @@ impl IdentifierIdMap {
             (Rc::new("print".to_string()), PRINT_ID),
             (Rc::new("println".to_string()), PRINTLN_ID),
             (Rc::new("error".to_string()), ERROR_ID),
-
             (Rc::new("while".to_string()), WHILE_ID),
+            (Rc::new("range".to_string()), RANGE_ID),
 
             (Rc::new("Int".to_string()), INT_ID),
             (Rc::new("Float".to_string()), FLOAT_ID),
@@ -69,6 +73,8 @@ impl IdentifierIdMap {
             (Rc::new("Void".to_string()), VOID_ID),
             (Rc::new("Unknown".to_string()), UNKNOWN_ID),
             (Rc::new("'T".to_string()), T_TYPE_PARAM_ID),
+            (Rc::new("List".to_string()), LIST_ID),
+            (Rc::new("Empty".to_string()), EMPTY_LIST_ID),
             (Rc::new("true".to_string()), TRUE_ID),
             (Rc::new("false".to_string()), FALSE_ID),
 
@@ -80,6 +86,7 @@ impl IdentifierIdMap {
             (Rc::new("('T) -> Unknown".to_string()), T_UNKNOWN_FUNC),
             (Rc::new("('T) -> 'T".to_string()), T_T_FUNC),
             (Rc::new("('T, ( 'T ) -> 'T, ( 'T ) -> Bool) -> 'T".to_string()), WHILE_FUNC_SIGNATURE),
+            (Rc::new("(Int) -> List[Int]".to_string()), RANGE_SIGNATURE),
         ]);
 
         let mut identifier_map = HashMap::new();

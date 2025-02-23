@@ -10,8 +10,9 @@ use crate::parser::combinators::ParserCombinator;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID, LT_ID, MUL_ID,
-    PRINTLN_ID, PRINT_ID, REPL_ID, SUB_ID, TRUE_ID, WHILE_ID, WILDCARD_ID,
+    IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID,
+    LIST_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, SUB_ID, TRUE_ID, WHILE_ID,
+    WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -113,6 +114,13 @@ impl Value {
         match self {
             Value::Bool(b) => *b,
             _ => panic!("Not a boolean"),
+        }
+    }
+
+    fn as_int(&self) -> i64 {
+        match self {
+            Value::Integer(x) => *x,
+            _ => panic!("Not an Int"),
         }
     }
 }
@@ -335,16 +343,51 @@ impl REPL {
                                     }
                                     bindings.insert(x, Rc::clone(value));
                                 }
-                                _ => return Err(format!("Unsupported destructuring in function '{}'", self.program.var_name(function_id))),
+                                _ => {
+                                    return Err(format!(
+                                        "Unsupported destructuring in function '{}'",
+                                        self.program.var_name(function_id)
+                                    ))
+                                }
                             }
                         }
                     }
-                    Value::Integer(_) => return Err(format!("Cannot destructure Int in function '{}'", self.program.var_name(function_id))),
-                    Value::String(_) => return Err(format!("Cannot destructure String in function '{}'", self.program.var_name(function_id))),
-                    Value::Float(_) => return Err(format!("Cannot destructure Float in function '{}'", self.program.var_name(function_id))),
-                    Value::Bool(_) => return Err(format!("Cannot destructure Bool in function '{}'", self.program.var_name(function_id))),
-                    Value::Function(_, _) => return Err(format!("Cannot destructure Function in function '{}'", self.program.var_name(function_id))),
-                    Value::Void => return Err(format!("Arg is Void in function '{}'", self.program.var_name(function_id))),
+                    Value::Integer(_) => {
+                        return Err(format!(
+                            "Cannot destructure Int in function '{}'",
+                            self.program.var_name(function_id)
+                        ))
+                    }
+                    Value::String(_) => {
+                        return Err(format!(
+                            "Cannot destructure String in function '{}'",
+                            self.program.var_name(function_id)
+                        ))
+                    }
+                    Value::Float(_) => {
+                        return Err(format!(
+                            "Cannot destructure Float in function '{}'",
+                            self.program.var_name(function_id)
+                        ))
+                    }
+                    Value::Bool(_) => {
+                        return Err(format!(
+                            "Cannot destructure Bool in function '{}'",
+                            self.program.var_name(function_id)
+                        ))
+                    }
+                    Value::Function(_, _) => {
+                        return Err(format!(
+                            "Cannot destructure Function in function '{}'",
+                            self.program.var_name(function_id)
+                        ))
+                    }
+                    Value::Void => {
+                        return Err(format!(
+                            "Arg is Void in function '{}'",
+                            self.program.var_name(function_id)
+                        ))
+                    }
                 },
                 DestructuringComponent::Integer(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {
@@ -561,13 +604,33 @@ impl REPL {
                 };
 
                 while self
-                    .evaluate_function_definition(condition_def, &vec![Rc::clone(&acc)], condition_caps)?
+                    .evaluate_function_definition(
+                        condition_def,
+                        &vec![Rc::clone(&acc)],
+                        condition_caps,
+                    )?
                     .as_boolean()
                 {
                     acc = self.evaluate_function_definition(update_def, &vec![acc], update_caps)?;
                 }
 
                 Ok(acc)
+            }
+            RANGE_ID => {
+                let n = self
+                    .evaluate_expression(identifier_values, &function_call.parameters[0])?
+                    .as_int();
+                let mut result = Rc::new(Value::Typed(LIST_ID, EMPTY_LIST_ID, vec![]));
+
+                for i in 0..n {
+                    result = Rc::new(Value::Typed(
+                        LIST_ID,
+                        EMPTY_LIST_ID,
+                        vec![Rc::new(Value::Integer(i)), result],
+                    ));
+                }
+
+                Ok(result)
             }
             PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();

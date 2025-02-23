@@ -5,7 +5,7 @@ use std::{
 
 use super::{
     identifier_map::{
-        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_BOOL_FUNC, T_TYPE_PARAM_ID, T_T_FUNC, T_UNKNOWN_FUNC, T_VOID_FUNC, VOID_ID, WHILE_FUNC_SIGNATURE, WHILE_ID, WILDCARD_ID
+        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LIST_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, RANGE_SIGNATURE, STRING_ID, SUB_ID, TRUE_ID, T_BOOL_FUNC, T_TYPE_PARAM_ID, T_T_FUNC, T_UNKNOWN_FUNC, T_VOID_FUNC, VOID_ID, WHILE_FUNC_SIGNATURE, WHILE_ID, WILDCARD_ID
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
@@ -26,11 +26,12 @@ impl TypeInfo {
     pub fn new() -> Self {
         let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID, FLOAT_ID]);
         let bool_type = Rc::new(Type::SimpleType(BOOL_ID));
+        let int_type = Rc::new(Type::SimpleType(INT_ID));
         let void_type = Rc::new(Type::SimpleType(VOID_ID));
         let t_type = Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID));
         let unknown_type = Rc::new(Type::Unknown);
+        let int_list_type = Rc::new(Type::ParametrizedType(LIST_ID, vec![Rc::clone(&int_type)]));
 
-        let int_type = Rc::new(Type::SimpleType(INT_ID));
         let binary_int_type = Rc::new(Type::FunctionType(
             BINARY_INT_INT_FUNC,
             vec![Rc::clone(&int_type), Rc::clone(&int_type)],
@@ -84,6 +85,17 @@ impl TypeInfo {
                             Rc::clone(&t_bool_type),
                         ],
                         Rc::clone(&t_type),
+                        None,
+                    )),
+                ),
+                (
+                    RANGE_ID,
+                    Rc::new(Type::FunctionType(
+                        RANGE_SIGNATURE,
+                        vec![
+                            Rc::clone(&int_type),
+                        ],
+                        Rc::clone(&int_list_type),
                         None,
                     )),
                 ),
