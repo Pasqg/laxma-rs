@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::mem;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -27,6 +28,32 @@ enum Value {
     String(Rc<String>),
     Function(Rc<FunctionDefinition>, Rc<HashMap<IdentifierId, Rc<Value>>>),
     Void,
+}
+
+// Like for linked lists, we need to avoid recursive drop().
+// Here it's enough for now to only handle Typed variant as Function chains of million elements are highly unlikely
+// see https://rust-unofficial.github.io/too-many-lists/first-drop.html
+impl Drop for Value {
+    fn drop(&mut self) {
+        let mut stack = Vec::new();
+        let mut current: *mut Value = self;
+
+        while let Some(node) = unsafe { current.as_mut() } {
+            if let Value::Typed(_, _, values) = node {
+                for rc in mem::take(values) {
+                    // Only executes when there reference count is 0
+                    if let Ok(inner) = Rc::try_unwrap(rc) {
+                        stack.push(Box::new(inner));
+                    }
+                }
+            }
+
+            current = match stack.pop() {
+                Some(boxed) => Box::leak(boxed),
+                None => std::ptr::null_mut(),
+            };
+        }
+    }
 }
 
 impl Display for Value {
