@@ -88,11 +88,7 @@ impl Value {
             Value::Typed(id, variant, values) => {
                 let mut args = Vec::new();
                 for value in values {
-                    let result = value.value_to_str(id_to_name);
-                    if result.is_err() {
-                        return result;
-                    }
-                    args.push(result.unwrap());
+                    args.push(value.value_to_str(id_to_name)?);
                 }
                 Ok(format!(
                     "{}::{}({})",
@@ -473,11 +469,8 @@ impl REPL {
                 let mut floats = Vec::new();
                 let mut i = 1;
                 for param in &function_call.parameters {
-                    let result = self.evaluate_expression(identifier_values, param);
-                    if result.is_err() {
-                        return result;
-                    }
-                    match result.unwrap().as_ref() {
+                    let result = self.evaluate_expression(identifier_values, param)?;
+                    match result.as_ref() {
                         Value::Integer(x) => ints.push(*x),
                         Value::Float(x) => floats.push(*x),
                         _ => {
@@ -540,19 +533,10 @@ impl REPL {
                     ));
                 }
 
-                let result =
-                    self.evaluate_expression(identifier_values, &function_call.parameters[0]);
-                if result.is_err() {
-                    return result;
-                }
-                let left = result.unwrap();
-
-                let result =
-                    self.evaluate_expression(identifier_values, &function_call.parameters[1]);
-                if result.is_err() {
-                    return result;
-                }
-                let right = result.unwrap();
+                let left =
+                    self.evaluate_expression(identifier_values, &function_call.parameters[0])?;
+                let right =
+                    self.evaluate_expression(identifier_values, &function_call.parameters[1])?;
 
                 let (left, right) = match (left.as_ref(), right.as_ref()) {
                     (Value::Integer(x), Value::Integer(y)) => (*x, *y),
@@ -636,14 +620,8 @@ impl REPL {
                 let mut values = Vec::new();
                 let mut i = 1;
                 for param in &function_call.parameters {
-                    let result = self.evaluate_expression(identifier_values, param);
-                    if result.is_err() {
-                        return result;
-                    }
-                    match result
-                        .unwrap()
-                        .value_to_str(&|id| Rc::clone(self.program.var_name(id)))
-                    {
+                    let result = self.evaluate_expression(identifier_values, param)?;
+                    match result.value_to_str(&|id| Rc::clone(self.program.var_name(id))) {
                         Ok(val) => values.push(val),
                         Err(err) => return Err(format!("Cannot print argument {i}: {err}")),
                     }
@@ -777,12 +755,7 @@ impl REPL {
             Expression::TypeConstructor(id, variant, expressions) => {
                 let mut values = Vec::new();
                 for expr in expressions {
-                    let result = self.evaluate_expression(identifier_values, expr);
-                    if result.is_err() {
-                        return result;
-                    }
-
-                    values.push(result.unwrap());
+                    values.push(self.evaluate_expression(identifier_values, expr)?);
                 }
 
                 Ok(Rc::new(Value::Typed(*id, *variant, values)))
@@ -793,21 +766,14 @@ impl REPL {
             Expression::WithBlock(items, expression) => {
                 let mut bindings = identifier_values.as_ref().clone();
                 for (id, expr) in items {
-                    let result = self.evaluate_expression(&Rc::new(bindings.clone()), expr);
-                    if result.is_err() {
-                        return result;
-                    }
-                    bindings.insert(*id, Rc::clone(&result.unwrap()));
+                    let result = self.evaluate_expression(&Rc::new(bindings.clone()), expr)?;
+                    bindings.insert(*id, Rc::clone(&result));
                 }
                 return self.evaluate_expression(&Rc::new(bindings), expression);
             }
             Expression::If(condition, true_branch, false_branch) => {
-                let condition = self.evaluate_expression(identifier_values, condition);
-                if condition.is_err() {
-                    return condition;
-                }
-
-                match condition.unwrap().as_ref() {
+                let condition = self.evaluate_expression(identifier_values, condition)?;
+                match condition.as_ref() {
                     Value::Bool(condition) => {
                         if *condition {
                             self.evaluate_expression(identifier_values, true_branch)

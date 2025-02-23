@@ -231,24 +231,17 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
         )),
         Some(Rules::ParametrizedType) => {
             let subtype = &ast.children[2];
-            let type_params =
-                if subtype.id == Some(Rules::Identifier) || subtype.id != Some(Rules::Elements) {
-                    let result = type_repr(subtype, identifier_id_map);
-                    if result.is_err() {
-                        return Err(result.unwrap_err());
-                    }
-                    vec![Rc::new(result.unwrap())]
-                } else {
-                    let mut type_params = Vec::new();
-                    for i in (0..subtype.children.len()).step_by(2) {
-                        let result = type_repr(&subtype.children[i], identifier_id_map);
-                        if result.is_err() {
-                            return Err(result.unwrap_err());
-                        }
-                        type_params.push(Rc::new(result.unwrap()));
-                    }
-                    type_params
-                };
+            let type_params = if subtype.id == Some(Rules::Identifier)
+                || subtype.id != Some(Rules::Elements)
+            {
+                vec![Rc::new(type_repr(subtype, identifier_id_map)?)]
+            } else {
+                let mut type_params = Vec::new();
+                for i in (0..subtype.children.len()).step_by(2) {
+                    type_params.push(Rc::new(type_repr(&subtype.children[i], identifier_id_map)?));
+                }
+                type_params
+            };
 
             let id = identifier_id_map.get_id(&Rc::new(name));
 
@@ -258,18 +251,10 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
             let arguments = &ast.children[1];
             let mut types = Vec::new();
             for child in &arguments.children {
-                let result = type_repr(child, identifier_id_map);
-                if result.is_err() {
-                    return result;
-                }
-                types.push(Rc::new(result.unwrap()));
+                types.push(Rc::new(type_repr(child, identifier_id_map)?));
             }
 
-            let result = type_repr(&ast.children[4], identifier_id_map);
-            if result.is_err() {
-                return result;
-            }
-            let return_type = Rc::new(result.unwrap());
+            let return_type = Rc::new(type_repr(&ast.children[4], identifier_id_map)?);
 
             Ok(Type::create_function_type(
                 identifier_id_map,
@@ -306,11 +291,8 @@ fn destructuring_repr(
                     }
                 }
                 Some(Rules::Destructuring) => {
-                    let result = destructuring_repr(child, identifier_id_map);
-                    if result.is_err() {
-                        return Err(result.unwrap_err());
-                    }
-                    components.push(DestructuringComponent::Destructuring(result.unwrap()));
+                    let result = destructuring_repr(child, identifier_id_map)?;
+                    components.push(DestructuringComponent::Destructuring(result));
                 }
                 _ => return Err(format!("Unexpected destructuring: {}", child)),
             }
@@ -330,12 +312,7 @@ fn argument_repr(
     identifier_id_map: &mut IdentifierIdMap,
 ) -> Result<FunctionArgument, String> {
     let arg = &ast.children[0];
-    let result = type_repr(&ast.children[2], identifier_id_map);
-    if result.is_err() {
-        return Err(result.unwrap_err());
-    }
-
-    let type_ = result.unwrap();
+    let type_ = type_repr(&ast.children[2], identifier_id_map)?;
     return if arg.id == Some(Rules::Identifier) {
         Ok(FunctionArgument {
             identifier: identifier_id_map.get_id(&Rc::new(arg.matched[0].unwrap_str())),
@@ -357,19 +334,13 @@ fn arguments_repr(
     match ast.id {
         None => {}
         Some(Rules::Argument) => {
-            let result = argument_repr(ast, identifier_id_map);
-            if result.is_err() {
-                return Err(result.unwrap_err());
-            }
-            arguments.push(result.unwrap());
+            let result = argument_repr(ast, identifier_id_map)?;
+            arguments.push(result);
         }
         Some(Rules::Arguments) => {
             for child in &ast.children {
-                let result = argument_repr(child, identifier_id_map);
-                if result.is_err() {
-                    return Err(result.unwrap_err());
-                }
-                arguments.push(result.unwrap());
+                let result = argument_repr(child, identifier_id_map)?;
+                arguments.push(result);
             }
         }
         _ => panic!("Expected None, Argument or Arguments but got {:?}", ast.id),
@@ -389,17 +360,14 @@ fn signature_repr(
     }
 
     let function_name = ast.matched[1].unwrap_str();
-
-    if ast.children.len() > 2 {
-        let result = arguments_repr(&ast.children[2], identifier_id_map);
-        if result.is_err() {
-            return Err(result.unwrap_err());
-        }
-
-        Ok((function_name, result.unwrap()))
-    } else {
-        Ok((function_name, Vec::new()))
+    if ast.children.len() <= 2 {
+        return Ok((function_name, Vec::new()));
     }
+
+    Ok((
+        function_name,
+        arguments_repr(&ast.children[2], identifier_id_map)?,
+    ))
 }
 
 pub fn expression_repr(
@@ -428,11 +396,7 @@ pub fn expression_repr(
             let mut parameters = Vec::new();
             for child in &body.children[2].children {
                 if child.id == Some(Rules::Expression) {
-                    let result = expression_repr(child, identifier_map);
-                    if result.is_err() {
-                        return Err(result.unwrap_err());
-                    }
-                    parameters.push(result.unwrap());
+                    parameters.push(expression_repr(child, identifier_map)?);
                 }
             }
             Ok(Expression::FunctionCall(FunctionCall {
@@ -444,11 +408,7 @@ pub fn expression_repr(
             let mut parameters = Vec::new();
             for child in &body.children[4].children {
                 if child.id == Some(Rules::Expression) {
-                    let result = expression_repr(child, identifier_map);
-                    if result.is_err() {
-                        return Err(result.unwrap_err());
-                    }
-                    parameters.push(result.unwrap());
+                    parameters.push(expression_repr(child, identifier_map)?);
                 }
             }
             Ok(Expression::TypeConstructor(
@@ -461,36 +421,21 @@ pub fn expression_repr(
             let mut elements = Vec::new();
             for child in &body.children[1].children {
                 let identifier = child.children[0].matched[0].unwrap_str();
-                let expr = expression_repr(&child.children[2], identifier_map);
-                if expr.is_err() {
-                    return Err(expr.unwrap_err());
-                }
-                elements.push((identifier_map.get_id(&Rc::new(identifier)), expr.unwrap()));
+                let expr = expression_repr(&child.children[2], identifier_map)?;
+                elements.push((identifier_map.get_id(&Rc::new(identifier)), expr));
             }
-            let result = expression_repr(&body.children[2], identifier_map);
-            if result.is_err() {
-                return Err(result.unwrap_err());
-            }
-            Ok(Expression::WithBlock(elements, Rc::new(result.unwrap())))
+            let result = expression_repr(&body.children[2], identifier_map)?;
+            Ok(Expression::WithBlock(elements, Rc::new(result)))
         }
         Some(Rules::IfExpression) => {
-            let condition = expression_repr(&body.children[1], identifier_map);
-            if condition.is_err() {
-                return Err(condition.unwrap_err());
-            }
-            let true_branch = expression_repr(&body.children[2], identifier_map);
-            if true_branch.is_err() {
-                return Err(true_branch.unwrap_err());
-            }
-            let false_branch = expression_repr(&body.children[3], identifier_map);
-            if false_branch.is_err() {
-                return Err(false_branch.unwrap_err());
-            }
+            let condition = expression_repr(&body.children[1], identifier_map)?;
+            let true_branch = expression_repr(&body.children[2], identifier_map)?;
+            let false_branch = expression_repr(&body.children[3], identifier_map)?;
 
             Ok(Expression::If(
-                Rc::new(condition.unwrap()),
-                Rc::new(true_branch.unwrap()),
-                Rc::new(false_branch.unwrap()),
+                Rc::new(condition),
+                Rc::new(true_branch),
+                Rc::new(false_branch),
             ))
         }
         Some(Rules::LambdaExpression) => {
@@ -554,11 +499,8 @@ fn pattern_matching_repr(
                         identifier_map.get_id(&Rc::new(component.matched[0].unwrap_str())),
                     ),
                     Some(Rules::Destructuring) => {
-                        let result = destructuring_repr(&component, identifier_map);
-                        if result.is_err() {
-                            return Err(result.unwrap_err());
-                        }
-                        DestructuringComponent::Destructuring(result.unwrap())
+                        let result = destructuring_repr(&component, identifier_map)?;
+                        DestructuringComponent::Destructuring(result)
                     }
                     Some(Rules::Integer) => DestructuringComponent::Integer(
                         component.matched[0].unwrap_str().parse().unwrap(),
@@ -580,12 +522,8 @@ fn pattern_matching_repr(
             }
         }
 
-        let result = expression_repr(&pattern.children[1].children[1], identifier_map);
-        if result.is_err() {
-            return Err(result.unwrap_err());
-        }
-
-        bodies.push((Pattern { components }, result.unwrap()));
+        let result = expression_repr(&pattern.children[1].children[1], identifier_map)?;
+        bodies.push((Pattern { components }, result));
     }
     return Ok(bodies);
 }
@@ -598,12 +536,7 @@ fn function_repr(
         return Err(format!("Expected a FunctionDef AST but got {:?}", ast.id));
     }
 
-    let result = signature_repr(&ast.children[0], identifier_map);
-    if result.is_err() {
-        return Err(result.unwrap_err());
-    }
-
-    let (name, arguments) = result.unwrap();
+    let (name, arguments) = signature_repr(&ast.children[0], identifier_map)?;
 
     let mut bodies = Vec::new();
 
@@ -614,22 +547,14 @@ fn function_repr(
     let rule = body.id.unwrap();
 
     if rule == Rules::FunctionBody {
-        let result = expression_repr(&body.children[1], identifier_map);
-        if result.is_err() {
-            return Err(result.unwrap_err());
-        }
         bodies.push((
             Pattern {
                 components: Vec::new(),
             },
-            result.unwrap(),
+            expression_repr(&body.children[1], identifier_map)?,
         ));
     } else if rule == Rules::PatternMatching {
-        let result = pattern_matching_repr(&body.children[1], identifier_map);
-        if result.is_err() {
-            return Err(result.unwrap_err());
-        }
-        bodies = result.unwrap();
+        bodies = pattern_matching_repr(&body.children[1], identifier_map)?;
     } else {
         return Err(format!(
             "Expected FunctionBody or PatternMatching but got {}",
@@ -654,11 +579,8 @@ fn type_variant_repr(
     if ast.children[1].id == Some(Rules::Elements) {
         let mut components = Vec::new();
         for child in &ast.children[1].children {
-            let result = type_repr(child, identifier_id_map);
-            if result.is_err() {
-                return Err(result.unwrap_err());
-            }
-            components.push(Rc::new(result.unwrap()));
+            let result = type_repr(child, identifier_id_map)?;
+            components.push(Rc::new(result));
         }
         return Ok((name.clone(), TypeVariant::Cartesian(name, components)));
     }
@@ -681,20 +603,11 @@ fn type_definition_repr(
         ));
     }
 
-    let _type = type_repr(&ast.children[1], identifier_id_map);
-    if _type.is_err() {
-        return Err(_type.unwrap_err());
-    }
-    let _type = _type.unwrap();
-
+    let _type = type_repr(&ast.children[1], identifier_id_map)?;
     let mut variants = HashMap::new();
     for child in &ast.children[3].children {
         if child.id == Some(Rules::TypeDef) {
-            let result = type_variant_repr(&child, identifier_id_map);
-            if result.is_err() {
-                return Err(result.unwrap_err());
-            }
-            let (name, variant) = result.unwrap();
+            let (name, variant) = type_variant_repr(&child, identifier_id_map)?;
             variants.insert(identifier_id_map.get_id(&Rc::new(name)), Rc::new(variant));
         }
     }
@@ -721,22 +634,12 @@ pub fn to_repr(
     for node in &ast.children {
         match node.id {
             Some(Rules::FunctionDef) => {
-                let result = function_repr(node, identifier_id_map);
-                if result.is_err() {
-                    return Err(result.unwrap_err());
-                }
-
-                let definition = result.unwrap();
+                let definition = function_repr(node, identifier_id_map)?;
                 functions.insert(definition.id, Rc::new(definition));
             }
             Some(Rules::TypeDef) => {
-                let result = type_definition_repr(node, identifier_id_map);
-                if result.is_err() {
-                    return Err(result.unwrap_err());
-                }
-
-                let (name, definition) = result.unwrap();
-                types.insert(name, definition);
+                let (id, definition) = type_definition_repr(node, identifier_id_map)?;
+                types.insert(id, definition);
             }
             _ => {
                 return Err(format!(
