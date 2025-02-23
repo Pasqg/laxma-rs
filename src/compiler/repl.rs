@@ -9,7 +9,8 @@ use crate::parser::combinators::ParserCombinator;
 use crate::{compiler::grammar, parser::token_stream::TokenStream};
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, REPL_ID, SUB_ID, TRUE_ID, WILDCARD_ID
+    IdentifierId, ADD_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID, LT_ID, MUL_ID,
+    PRINTLN_ID, PRINT_ID, REPL_ID, SUB_ID, TRUE_ID, WHILE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -78,6 +79,13 @@ impl Value {
             Value::Bool(x) => Ok(format!("{x}")),
             Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len() - 1])),
             Value::Void => Ok("Void".to_string()),
+        }
+    }
+
+    fn as_boolean(&self) -> bool {
+        match self {
+            Value::Bool(b) => *b,
+            _ => panic!("Not a boolean"),
         }
     }
 }
@@ -498,6 +506,42 @@ impl REPL {
                     ),
                 }
             }
+            WHILE_ID => {
+                let condition =
+                    self.evaluate_expression(identifier_values, &function_call.parameters[2])?;
+                let (condition_def, condition_caps) = match condition.as_ref() {
+                    Value::Function(def, captures) => (def, captures),
+                    _ => {
+                        return Err(format!(
+                            "Expected function as condition in while but got '{:?}'",
+                            condition.value_to_str(&|id| Rc::clone(self.program.var_name(id)))
+                        ))
+                    }
+                };
+
+                let mut acc =
+                    self.evaluate_expression(identifier_values, &function_call.parameters[0])?;
+                let update =
+                    self.evaluate_expression(identifier_values, &function_call.parameters[1])?;
+                let (update_def, update_caps) = match update.as_ref() {
+                    Value::Function(def, captures) => (def, captures),
+                    _ => {
+                        return Err(format!(
+                            "Expected function as update in while but got '{:?}'",
+                            update.value_to_str(&|id| Rc::clone(self.program.var_name(id)))
+                        ))
+                    }
+                };
+
+                while self
+                    .evaluate_function_definition(condition_def, &vec![Rc::clone(&acc)], condition_caps)?
+                    .as_boolean()
+                {
+                    acc = self.evaluate_function_definition(update_def, &vec![acc], update_caps)?;
+                }
+
+                Ok(acc)
+            }
             PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
@@ -531,32 +575,35 @@ impl REPL {
             }
             _ => {
                 let mut captures = identifier_values.as_ref().clone();
-                let mut definition = self.program.functions.get(&function_call.id);
-                if definition.is_none() {
-                    let function_value = identifier_values.get(&function_call.id);
-                    if function_value.is_none() {
-                        return Err(format!(
-                            "Function '{}' is not defined",
-                            self.program.var_name(&function_call.id)
-                        ));
-                    }
 
-                    match function_value.unwrap().as_ref() {
-                        Value::Function(function_definition, lambda_captures) => {
-                            definition = Some(function_definition);
-                            for (k, v) in lambda_captures.as_ref() {
-                                captures.insert(*k, Rc::clone(v));
-                            }
-                        }
-                        _ => {
+                let definition = {
+                    let mut definition = self.program.functions.get(&function_call.id);
+                    if definition.is_none() {
+                        let function_value = identifier_values.get(&function_call.id);
+                        if function_value.is_none() {
                             return Err(format!(
-                                "'{}' is not a function",
+                                "Function '{}' is not defined",
                                 self.program.var_name(&function_call.id)
                             ));
                         }
+
+                        match function_value.unwrap().as_ref() {
+                            Value::Function(function_definition, lambda_captures) => {
+                                definition = Some(function_definition);
+                                for (k, v) in lambda_captures.as_ref() {
+                                    captures.insert(*k, Rc::clone(v));
+                                }
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "'{}' is not a function",
+                                    self.program.var_name(&function_call.id)
+                                ));
+                            }
+                        }
                     }
-                }
-                let definition = Rc::clone(&definition.unwrap());
+                    Rc::clone(definition.unwrap())
+                };
 
                 //todo should be static checks
                 let expected_arg_num = definition.arguments.len();
@@ -564,67 +611,71 @@ impl REPL {
                 if expected_arg_num != actual_arg_num {
                     return Err(format!(
                         "Function '{}' expects {} arguments, but {} were provided",
-                        self.program.var_name(&function_call.id),
+                        self.program.var_name(&definition.id),
                         expected_arg_num,
                         actual_arg_num
                     ));
                 }
 
                 let captures = Rc::new(captures);
-                let mut arg_values = captures.as_ref().clone();
-                let mut ordered_arg_values = Vec::new();
-                for i in 0..actual_arg_num {
-                    // Evaluate parameter value
-                    let result = self.evaluate_expression(&captures, &function_call.parameters[i]);
-                    if result.is_err() {
-                        return result;
-                    }
-
-                    let value = result.unwrap();
-                    let arg_id = &definition.arguments[i].identifier;
-                    arg_values.insert(*arg_id, Rc::clone(&value));
-                    ordered_arg_values.push(value);
+                let mut values = Vec::new();
+                for param in &function_call.parameters {
+                    values.push(self.evaluate_expression(&captures, &param)?);
                 }
-                let arg_values = Rc::new(arg_values);
-
-                if definition.is_not_pattern_matched() {
-                    return self.evaluate_expression(&arg_values, &definition.bodies[0].1);
-                }
-
-                for (pattern, expression) in &definition.bodies {
-                    let result =
-                        self.pattern_match(&function_call.id, pattern, &ordered_arg_values);
-                    if result.is_err() {
-                        return Err(result.unwrap_err());
-                    }
-                    let result = result.unwrap();
-                    if result.is_match {
-                        return if !result.bindings.is_empty() {
-                            let mut bindings = arg_values.as_ref().clone();
-                            for (k, v) in &result.bindings {
-                                bindings.insert(*k, Rc::clone(v));
-                            }
-                            self.evaluate_expression(&Rc::new(bindings), expression)
-                        } else {
-                            self.evaluate_expression(&arg_values, expression)
-                        };
-                    }
-                }
-
-                //todo: should be caught at compile time
-                Err(format!(
-                    "Non-exhaustive patterns in function '{}' for values: {}",
-                    self.program.var_name(&function_call.id),
-                    ordered_arg_values
-                        .iter()
-                        .map(|v| v
-                            .value_to_str(&|id| Rc::clone(self.program.var_name(id)))
-                            .unwrap())
-                        .collect::<Vec<String>>()
-                        .join(", "),
-                ))
+                self.evaluate_function_definition(&definition, &values, &captures)
             }
         }
+    }
+
+    fn evaluate_function_definition(
+        &mut self,
+        definition: &Rc<FunctionDefinition>,
+        parameter_values: &Vec<Rc<Value>>,
+        captures: &Rc<HashMap<IdentifierId, Rc<Value>>>,
+    ) -> Result<Rc<Value>, String> {
+        let mut arg_values = captures.as_ref().clone();
+        let mut ordered_arg_values = Vec::new();
+        for i in 0..parameter_values.len() {
+            // Evaluate parameter value
+            let value = Rc::clone(&parameter_values[i]);
+            let arg_id = &definition.arguments[i].identifier;
+            arg_values.insert(*arg_id, Rc::clone(&value));
+            ordered_arg_values.push(value);
+        }
+        let arg_values = Rc::new(arg_values);
+
+        if definition.is_not_pattern_matched() {
+            return self.evaluate_expression(&arg_values, &definition.bodies[0].1);
+        }
+
+        for (pattern, expression) in &definition.bodies {
+            let PatternMatchResult { is_match, bindings } =
+                self.pattern_match(&definition.id, pattern, &ordered_arg_values)?;
+            if is_match {
+                if bindings.is_empty() {
+                    return self.evaluate_expression(&arg_values, expression);
+                }
+
+                let mut new_bindings: HashMap<i32, Rc<Value>> = arg_values.as_ref().clone();
+                for (k, v) in &bindings {
+                    new_bindings.insert(*k, Rc::clone(v));
+                }
+                return self.evaluate_expression(&Rc::new(new_bindings), expression);
+            }
+        }
+
+        //todo: should be caught at compile time
+        Err(format!(
+            "Non-exhaustive patterns in function '{}' for values: {}",
+            self.program.var_name(&definition.id),
+            ordered_arg_values
+                .iter()
+                .map(|v| v
+                    .value_to_str(&|id| Rc::clone(self.program.var_name(id)))
+                    .unwrap())
+                .collect::<Vec<String>>()
+                .join(", "),
+        ))
     }
 
     fn evaluate_expression(
@@ -712,11 +763,5 @@ impl REPL {
 
     fn var_name(&self, id: &i32) -> &Rc<String> {
         self.program.identifier_id_map.get_identifier(id).unwrap()
-    }
-
-    fn var_names<T>(&self, c: &HashMap<IdentifierId, T>) -> Vec<&Rc<String>> {
-        c.iter()
-            .map(|(k, _)| self.program.var_name(k))
-            .collect::<Vec<&Rc<String>>>()
     }
 }

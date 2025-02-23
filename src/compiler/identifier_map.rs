@@ -29,6 +29,11 @@ pub(super) const FLOAT_ID: IdentifierId = 22;
 pub(super) const ERROR_ID: IdentifierId = 23;
 pub(super) const REPL_ID: IdentifierId = 24;
 pub(super) const PRINTLN_ID: IdentifierId = 25;
+pub(super) const WHILE_ID: IdentifierId = 26;
+pub(super) const WHILE_FUNC_SIGNATURE: IdentifierId = 27;
+pub(super) const T_BOOL_FUNC: IdentifierId = 28;
+pub(super) const T_UNKNOWN_FUNC: IdentifierId = 29;
+pub(super) const T_T_FUNC: IdentifierId = 30;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -55,6 +60,8 @@ impl IdentifierIdMap {
             (Rc::new("println".to_string()), PRINTLN_ID),
             (Rc::new("error".to_string()), ERROR_ID),
 
+            (Rc::new("while".to_string()), WHILE_ID),
+
             (Rc::new("Int".to_string()), INT_ID),
             (Rc::new("Float".to_string()), FLOAT_ID),
             (Rc::new("String".to_string()), STRING_ID),
@@ -69,6 +76,10 @@ impl IdentifierIdMap {
             (Rc::new("(Int, Int) -> Bool".to_string()), BINARY_INT_BOOL_FUNC),
             (Rc::new("(Int, Int) -> Int".to_string()), BINARY_INT_INT_FUNC),
             (Rc::new("('T) -> Void".to_string()), T_VOID_FUNC),
+            (Rc::new("('T) -> Bool".to_string()), T_BOOL_FUNC),
+            (Rc::new("('T) -> Unknown".to_string()), T_UNKNOWN_FUNC),
+            (Rc::new("('T) -> 'T".to_string()), T_T_FUNC),
+            (Rc::new("('T, ( 'T ) -> 'T, ( 'T ) -> Bool) -> 'T".to_string()), WHILE_FUNC_SIGNATURE),
         ]);
 
         let mut identifier_map = HashMap::new();

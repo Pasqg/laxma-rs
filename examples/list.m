@@ -1,8 +1,14 @@
+fn -- x : Int -> - ( x 1 )
+fn ++ x : Int -> + ( x 1 )
+
 type List [ 'T ] -> Empty | List 'T List [ 'T ]
 
 type Option [ 'T ] -> None | Some 'T
 
 type Pair [ 'P , 'Q ] -> Pair 'P 'Q
+
+fn pair_first pair : Pair [ 'P , 'Q ] = Pair x _ -> x
+fn pair_second pair : Pair [ 'P , 'Q ] = Pair _ x -> x
 
 fn empty -> List :: Empty ( )
 
@@ -37,6 +43,28 @@ fn length x : List [ 'T ] =
 fn list_of n : Int x : 'T =
     1 , _ -> list ( x )
     _ , _ -> cons ( x list_of ( - ( n 1 ) x ) )
+
+fn for n : Int
+    over : 'T
+    f : ( 'T ) -> 'T
+    -> with result = while (
+            Pair :: Pair ( 0 over )
+            ( pair : Pair [ Int , 'T ] ) ->
+                Pair :: Pair (
+                    ++ ( pair_first ( pair ) )
+                    f ( pair_second ( pair ) )
+                )
+            ( pair : Pair [ Int , 'T ] ) -> < ( pair_first ( pair ) n )
+        )
+        pair_second ( result )
+
+fn range n : Int = 
+    0 -> empty ( )
+    _ -> with k = -- ( n ) while (
+            list ( 0 )
+            ( xs : List [ Int ] ) -> cons ( ++ ( first ( xs ) ) xs )
+            ( xs : List [ Int ] ) -> < ( first ( xs ) k )
+        )
 
 fn filter pred : ( 'T ) -> Bool xs : List [ 'T ] =
     _ , Empty -> empty ( )

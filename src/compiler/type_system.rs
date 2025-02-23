@@ -5,9 +5,7 @@ use std::{
 
 use super::{
     identifier_map::{
-        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID,
-        ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINTLN_ID,
-        PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_TYPE_PARAM_ID, T_VOID_FUNC, VOID_ID, WILDCARD_ID,
+        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID, ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, STRING_ID, SUB_ID, TRUE_ID, T_BOOL_FUNC, T_TYPE_PARAM_ID, T_T_FUNC, T_UNKNOWN_FUNC, T_VOID_FUNC, VOID_ID, WHILE_FUNC_SIGNATURE, WHILE_ID, WILDCARD_ID
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
@@ -29,6 +27,7 @@ impl TypeInfo {
         let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID, FLOAT_ID]);
         let bool_type = Rc::new(Type::SimpleType(BOOL_ID));
         let void_type = Rc::new(Type::SimpleType(VOID_ID));
+        let t_type = Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID));
         let unknown_type = Rc::new(Type::Unknown);
 
         let int_type = Rc::new(Type::SimpleType(INT_ID));
@@ -44,34 +43,47 @@ impl TypeInfo {
             Rc::clone(&bool_type),
             None,
         ));
+        let t_void_type = Rc::new(Type::FunctionType(
+            T_VOID_FUNC,
+            vec![Rc::clone(&t_type)],
+            Rc::clone(&void_type),
+            None,
+        ));
+        let t_bool_type = Rc::new(Type::FunctionType(
+            T_BOOL_FUNC,
+            vec![Rc::clone(&t_type)],
+            Rc::clone(&bool_type),
+            None,
+        ));
+        let t_unknown_type = Rc::new(Type::FunctionType(
+            T_UNKNOWN_FUNC,
+            vec![Rc::clone(&t_type)],
+            Rc::clone(&unknown_type),
+            None,
+        ));
+        let t_t_type = Rc::new(Type::FunctionType(
+            T_T_FUNC,
+            vec![Rc::clone(&t_type)],
+            Rc::clone(&t_type),
+            None,
+        ));
         Self {
             primitive_types,
             user_types: HashMap::new(),
             function_types: HashMap::from([
+                (PRINT_ID, Rc::clone(&t_void_type)),
+                (PRINTLN_ID, Rc::clone(&t_void_type)),
+                (ERROR_ID, Rc::clone(&t_unknown_type)),
                 (
-                    PRINT_ID,
+                    WHILE_ID,
                     Rc::new(Type::FunctionType(
-                        T_VOID_FUNC,
-                        vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
-                        Rc::clone(&void_type),
-                        None,
-                    )),
-                ),
-                (
-                    PRINTLN_ID,
-                    Rc::new(Type::FunctionType(
-                        T_VOID_FUNC,
-                        vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
-                        Rc::clone(&void_type),
-                        None,
-                    )),
-                ),
-                (
-                    ERROR_ID,
-                    Rc::new(Type::FunctionType(
-                        T_VOID_FUNC,
-                        vec![Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID))],
-                        Rc::clone(&unknown_type),
+                        WHILE_FUNC_SIGNATURE,
+                        vec![
+                            Rc::clone(&t_type),
+                            Rc::clone(&t_t_type),
+                            Rc::clone(&t_bool_type),
+                        ],
+                        Rc::clone(&t_type),
                         None,
                     )),
                 ),
