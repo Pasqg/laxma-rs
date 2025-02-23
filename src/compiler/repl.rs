@@ -300,16 +300,16 @@ impl REPL {
                                     }
                                     bindings.insert(x, Rc::clone(value));
                                 }
-                                _ => return Err("Unsupported destructuring".to_string()),
+                                _ => return Err(format!("Unsupported destructuring in function '{}'", self.program.var_name(function_id))),
                             }
                         }
                     }
-                    Value::Integer(_) => return Err(format!("Cannot destructure Int")),
-                    Value::String(_) => return Err(format!("Cannot destructure String")),
-                    Value::Float(_) => return Err(format!("Cannot destructure Float")),
-                    Value::Bool(_) => return Err(format!("Cannot destructure Bool")),
-                    Value::Function(_, _) => return Err(format!("Cannot destructure Function")),
-                    Value::Void => return Err(format!("Arg is Void")),
+                    Value::Integer(_) => return Err(format!("Cannot destructure Int in function '{}'", self.program.var_name(function_id))),
+                    Value::String(_) => return Err(format!("Cannot destructure String in function '{}'", self.program.var_name(function_id))),
+                    Value::Float(_) => return Err(format!("Cannot destructure Float in function '{}'", self.program.var_name(function_id))),
+                    Value::Bool(_) => return Err(format!("Cannot destructure Bool in function '{}'", self.program.var_name(function_id))),
+                    Value::Function(_, _) => return Err(format!("Cannot destructure Function in function '{}'", self.program.var_name(function_id))),
+                    Value::Void => return Err(format!("Arg is Void in function '{}'", self.program.var_name(function_id))),
                 },
                 DestructuringComponent::Integer(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {

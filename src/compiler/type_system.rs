@@ -210,6 +210,7 @@ fn concretize_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
     identifier_types: &Rc<HashMap<IdentifierId, Rc<Type>>>,
+    caller_id: &IdentifierId,
     function_id: &IdentifierId,
     function_type: &Rc<Type>,
     arguments: &Vec<Rc<Type>>,
@@ -218,8 +219,9 @@ fn concretize_function_type(
     let mut type_parameters_bindings = TypeParameterBindings::new();
     if parameters.len() != arguments.len() {
         return Err(format!(
-            "Function '{}' expects {} arguments but {} were provided",
+            "Function '{}' in caller '{}' expects {} arguments but {} were provided",
             program.var_name(function_id),
+            program.var_name(caller_id),
             arguments.len(),
             parameters.len()
         ));
@@ -227,7 +229,7 @@ fn concretize_function_type(
     for i in 0..parameters.len() {
         let arg_expr = &parameters[i];
         let provided_type =
-            infer_expression_type(program, type_info, identifier_types, function_id, arg_expr);
+            infer_expression_type(program, type_info, identifier_types, caller_id, arg_expr);
         if provided_type.is_err() {
             return provided_type;
         }
@@ -236,9 +238,10 @@ fn concretize_function_type(
         let arg_type = &arguments[i];
         if !type_parameters_bindings.are_compatible(arg_type, &provided_type) {
             return Err(format!(
-                "Argument {} in function '{}' has type '{}' ('{}') but '{}' ('{}') was provided",
+                "Argument {} in function '{}' in caller '{}' has type '{}' ('{}') but '{}' ('{}') was provided",
                 i,
                 program.var_name(function_id),
+                program.var_name(caller_id),
                 type_parameters_bindings
                     .concretize(arg_type)
                     .full_repr(&program.identifier_id_map),
@@ -359,6 +362,7 @@ pub fn infer_expression_type(
                         type_info,
                         identifier_types,
                         current_function_id,
+                        &function_call.id,
                         function_type,
                         &function_definition
                             .arguments
@@ -379,6 +383,7 @@ pub fn infer_expression_type(
                                     captures.as_ref().unwrap()
                                 },
                                 current_function_id,
+                                &function_call.id,
                                 function_type,
                                 &inputs,
                                 &function_call.parameters,
