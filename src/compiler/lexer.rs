@@ -53,6 +53,23 @@ mod tests {
     }
 
     #[test]
+    fn test_strings() {
+        let stream = Lexer::token_stream(r#""one" "" "one two" " one "two" one two . -> one""#);
+
+        assert_eq!(
+            stream,
+            TokenStream::with_offset(Rc::new(vec![
+                Token::str(r#""one""#),
+                Token::str(r#""""#),
+                Token::str(r#""one two""#),
+                Token::str(r#"" one ""#),
+                Token::str("two"),
+                Token::str(r#"" one two . -> one""#),
+            ]), 0)
+        )
+    }
+
+    #[test]
     fn test_numbers() {
         let stream = Lexer::token_stream("1.2 2 3.303 -8 -1.7 +2.1 +5");
 
