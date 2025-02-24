@@ -3,6 +3,8 @@ use std::{
     rc::Rc,
 };
 
+use nohash_hasher::IntMap;
+
 use super::{
     identifier_map::{
         IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID,
@@ -12,17 +14,18 @@ use super::{
         WHILE_ID, WILDCARD_ID,
     },
     internal_repr::{
-        DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type, TypeDefinition, TypeVariant
-    },
+        DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
+        TypeVariant,
+    }, utils::to_int_map,
 };
 
 #[derive(Debug, Clone)]
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<IdentifierId>,
-    pub(super) user_types: HashMap<IdentifierId, RcType>,
+    pub(super) user_types: IntMap<IdentifierId, Rc<Type>>,
     //todo: function_types and constant_types could be part of the same map
-    pub(super) function_types: HashMap<IdentifierId, RcType>,
-    pub(super) constant_types: Rc<HashMap<IdentifierId, RcType>>,
+    pub(super) function_types: IntMap<IdentifierId, Rc<Type>>,
+    pub(super) constant_types: Rc<IntMap<IdentifierId, Rc<Type>>>,
 }
 
 impl TypeInfo {
@@ -73,8 +76,8 @@ impl TypeInfo {
         ));
         Self {
             primitive_types,
-            user_types: HashMap::new(),
-            function_types: HashMap::from([
+            user_types: IntMap::default(),
+            function_types: to_int_map(HashMap::from([
                 (PRINT_ID, Rc::clone(&t_void_type)),
                 (PRINTLN_ID, Rc::clone(&t_void_type)),
                 (ERROR_ID, Rc::clone(&t_unknown_type)),
@@ -109,11 +112,11 @@ impl TypeInfo {
                 (EQ_ID, Rc::clone(&bool_type)),
                 (LT_ID, Rc::clone(&int_comparison_type)),
                 (LE_ID, Rc::clone(&int_comparison_type)),
-            ]),
-            constant_types: Rc::new(HashMap::from([
+            ])),
+            constant_types: Rc::new(to_int_map(HashMap::from([
                 (TRUE_ID, Rc::clone(&bool_type)),
                 (FALSE_ID, Rc::clone(&bool_type)),
-            ])),
+            ]))),
         }
     }
 
@@ -129,17 +132,17 @@ impl TypeInfo {
 
 #[derive(Debug)]
 struct TypeParameterBindings {
-    bindings: HashMap<IdentifierId, RcType>,
+    bindings: IntMap<IdentifierId, Rc<Type>>,
 }
 
 impl TypeParameterBindings {
     fn new() -> Self {
         Self {
-            bindings: HashMap::new(),
+            bindings: IntMap::default(),
         }
     }
 
-    fn concretize(&self, _type: &RcType) -> RcType {
+    fn concretize(&self, _type: &Rc<Type>) -> Rc<Type> {
         match _type.as_ref() {
             Type::FunctionType(id, inputs, outputs, captures) => Rc::new(Type::FunctionType(
                 *id,
@@ -162,7 +165,7 @@ impl TypeParameterBindings {
         }
     }
 
-    fn are_compatible(&mut self, first: &RcType, second: &RcType) -> bool {
+    fn are_compatible(&mut self, first: &Rc<Type>, second: &Rc<Type>) -> bool {
         //todo: this concretization should only work one way! List['T] as argument for List[Int] is not valid
 
         match (first.as_ref(), second.as_ref()) {
@@ -233,13 +236,13 @@ impl TypeParameterBindings {
 fn concretize_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &Rc<HashMap<IdentifierId, RcType>>,
+    identifier_types: &Rc<IntMap<IdentifierId, Rc<Type>>>,
     caller_id: &IdentifierId,
     function_id: &IdentifierId,
-    function_type: &RcType,
-    arguments: &Vec<RcType>,
+    function_type: &Rc<Type>,
+    arguments: &Vec<Rc<Type>>,
     parameters: &Vec<Expression>,
-) -> Result<RcType, String> {
+) -> Result<Rc<Type>, String> {
     let mut type_parameters_bindings = TypeParameterBindings::new();
     if parameters.len() != arguments.len() {
         return Err(format!(
@@ -283,10 +286,10 @@ fn concretize_function_type(
 pub fn infer_expression_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &Rc<HashMap<IdentifierId, RcType>>,
+    identifier_types: &Rc<IntMap<IdentifierId, Rc<Type>>>,
     current_function_id: &IdentifierId,
     expression: &Expression,
-) -> Result<RcType, String> {
+) -> Result<Rc<Type>, String> {
     match expression {
         Expression::TypeConstructor(type_id, variant, expressions) => {
             let type_variant = {
@@ -579,8 +582,8 @@ pub fn infer_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
     current_function: &FunctionDefinition,
-    captures: Option<Rc<HashMap<IdentifierId, RcType>>>,
-) -> Result<RcType, String> {
+    captures: Option<Rc<IntMap<IdentifierId, Rc<Type>>>>,
+) -> Result<Rc<Type>, String> {
     let mut arg_types = type_info.constant_types.as_ref().clone();
     if captures.is_some() {
         for (k, v) in captures.as_ref().unwrap().as_ref() {

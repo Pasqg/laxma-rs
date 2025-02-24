@@ -4,6 +4,8 @@ use std::{
     rc::Rc,
 };
 
+use nohash_hasher::IntMap;
+
 use crate::{
     parser::{ast::AST, token_stream::Token},
     utils::InsertionOrderHashMap,
@@ -27,7 +29,7 @@ pub(super) enum Type {
         IdentifierId,
         Vec<RcType>,
         RcType,
-        Option<Rc<HashMap<IdentifierId, RcType>>>,
+        Option<Rc<IntMap<IdentifierId, RcType>>>,
     ),
     Unknown,
 }
@@ -112,7 +114,7 @@ impl Type {
         identifier_id_map: &mut IdentifierIdMap,
         types: Vec<RcType>,
         return_type: RcType,
-        captures: Option<Rc<HashMap<IdentifierId, RcType>>>,
+        captures: Option<Rc<IntMap<IdentifierId, RcType>>>,
     ) -> Type {
         let lambda_name_id = identifier_id_map.get_id(&Rc::new(format!(
             "({}) -> {}",
@@ -136,7 +138,7 @@ pub(super) enum TypeVariant {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct TypeDefinition {
     pub(super) def: RcType,
-    pub(super) variants: HashMap<IdentifierId, Rc<TypeVariant>>,
+    pub(super) variants: IntMap<IdentifierId, Rc<TypeVariant>>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -206,7 +208,7 @@ impl FunctionDefinition {
 #[derive(Debug, Clone)]
 pub(super) struct Program {
     pub(super) functions: InsertionOrderHashMap<IdentifierId, Rc<FunctionDefinition>>,
-    pub(super) types: HashMap<IdentifierId, TypeDefinition>,
+    pub(super) types: IntMap<IdentifierId, TypeDefinition>,
     pub(super) identifier_id_map: IdentifierIdMap,
 }
 
@@ -214,7 +216,7 @@ impl Program {
     pub(super) fn new() -> Self {
         Self {
             functions: InsertionOrderHashMap::new(),
-            types: HashMap::new(),
+            types: IntMap::default(),
             identifier_id_map: IdentifierIdMap::new(),
         }
     }
@@ -606,7 +608,7 @@ fn type_definition_repr(
     }
 
     let _type = type_repr(&ast.children[1], identifier_id_map)?;
-    let mut variants = HashMap::new();
+    let mut variants = IntMap::default();
     for child in &ast.children[3].children {
         if child.id == Some(Rules::TypeDef) {
             let (name, variant) = type_variant_repr(&child, identifier_id_map)?;
@@ -632,7 +634,7 @@ pub fn to_repr(
     }
 
     let mut functions = InsertionOrderHashMap::new();
-    let mut types = HashMap::new();
+    let mut types = IntMap::default();
     for node in &ast.children {
         match node.id {
             Some(Rules::FunctionDef) => {

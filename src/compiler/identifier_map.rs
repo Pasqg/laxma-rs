@@ -1,5 +1,7 @@
 use std::{collections::HashMap, rc::Rc};
 
+use nohash_hasher::IntMap;
+
 pub(super) type IdentifierId = i32;
 
 pub(super) const UNDEFINED_ID: IdentifierId = -1;
@@ -42,7 +44,7 @@ pub(super) const EMPTY_LIST_ID: IdentifierId = 34;
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
     id_map: HashMap<Rc<String>, IdentifierId>,
-    identifier_map: HashMap<IdentifierId, Rc<String>>,
+    identifier_map: IntMap<IdentifierId, Rc<String>>,
 }
 
 impl IdentifierIdMap {
@@ -89,7 +91,7 @@ impl IdentifierIdMap {
             (Rc::new("(Int) -> List[Int]".to_string()), RANGE_SIGNATURE),
         ]);
 
-        let mut identifier_map = HashMap::new();
+        let mut identifier_map = IntMap::default();
         for (k, v) in &id_map {
             identifier_map.insert(v.to_owned(), Rc::clone(k));
         }

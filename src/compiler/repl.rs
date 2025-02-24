@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
 
+use nohash_hasher::IntMap;
+
 use crate::compiler::grammar;
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::infer_function_type;
-use crate::compiler::grammar;
+use crate::parser::combinators::ParserCombinator;
 
 use super::identifier_map::{
     IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID,
@@ -18,23 +20,24 @@ use super::internal_repr::{
 };
 use super::lexer::Lexer;
 use super::type_system::{infer_expression_type, TypeInfo};
+use super::utils::to_int_map;
 use super::value::{RcValue, Value};
 
 #[derive(Clone, Debug)]
 struct PatternMatchResult {
     is_match: bool,
-    bindings: HashMap<IdentifierId, RcValue>,
+    bindings: IntMap<IdentifierId, RcValue>,
 }
 
 impl PatternMatchResult {
     fn no_match() -> Self {
         Self {
             is_match: false,
-            bindings: HashMap::new(),
+            bindings: IntMap::default(),
         }
     }
 
-    fn with_match(bindings: HashMap<IdentifierId, RcValue>) -> Self {
+    fn with_match(bindings: IntMap<IdentifierId, RcValue>) -> Self {
         Self {
             is_match: true,
             bindings,
@@ -105,10 +108,10 @@ impl REPL {
             let original_error = result.unwrap_err();
             let result = expression_repr(&ast, &mut self.program.identifier_id_map);
             if result.is_ok() {
-                let values = HashMap::from([
+                let values = to_int_map(HashMap::from([
                     (TRUE_ID, Rc::new(Value::Bool(true))),
                     (FALSE_ID, Rc::new(Value::Bool(false))),
-                ]);
+                ]));
                 let start = Instant::now();
                 let expression = result.unwrap();
                 let expr_type = infer_expression_type(
@@ -153,7 +156,7 @@ impl REPL {
             ));
         }
 
-        let mut bindings = HashMap::new();
+        let mut bindings = IntMap::default();
         for i in 0..pattern.components.len() {
             let element = &pattern.components[i];
             let arg = &args[i];
@@ -351,7 +354,7 @@ impl REPL {
     fn evaluate_function_call(
         &mut self,
         function_call: &FunctionCall,
-        identifier_values: &Rc<HashMap<IdentifierId, RcValue>>,
+        identifier_values: &Rc<IntMap<IdentifierId, RcValue>>,
     ) -> Result<RcValue, String> {
         match function_call.id {
             ADD_ID | SUB_ID | MUL_ID | DIV_ID => {
@@ -597,7 +600,7 @@ impl REPL {
         &mut self,
         definition: &Rc<FunctionDefinition>,
         parameter_values: &Vec<RcValue>,
-        captures: &Rc<HashMap<IdentifierId, RcValue>>,
+        captures: &Rc<IntMap<IdentifierId, RcValue>>,
     ) -> Result<RcValue, String> {
         let mut arg_values = captures.as_ref().clone();
         let mut ordered_arg_values = Vec::new();
@@ -622,7 +625,7 @@ impl REPL {
                     return self.evaluate_expression(&arg_values, expression);
                 }
 
-                let mut new_bindings: HashMap<i32, RcValue> = arg_values.as_ref().clone();
+                let mut new_bindings = arg_values.as_ref().clone();
                 for (k, v) in &bindings {
                     new_bindings.insert(*k, Rc::clone(v));
                 }
@@ -646,7 +649,7 @@ impl REPL {
 
     fn evaluate_expression(
         &mut self,
-        identifier_values: &Rc<HashMap<IdentifierId, RcValue>>,
+        identifier_values: &Rc<IntMap<IdentifierId, RcValue>>,
         expression: &Expression,
     ) -> Result<RcValue, String> {
         match expression {

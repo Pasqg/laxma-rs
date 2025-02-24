@@ -1,4 +1,6 @@
-use std::{collections::HashMap, fmt::Display, mem, rc::Rc};
+use std::{fmt::Display, mem, rc::Rc};
+
+use nohash_hasher::IntMap;
 
 use super::{identifier_map::IdentifierId, internal_repr::FunctionDefinition};
 
@@ -12,7 +14,7 @@ pub(super) enum Value {
     Float(f32),
     Bool(bool),
     String(Rc<String>),
-    Function(Rc<FunctionDefinition>, Rc<HashMap<IdentifierId, RcValue>>),
+    Function(Rc<FunctionDefinition>, Rc<IntMap<IdentifierId, RcValue>>),
     Void,
 }
 
