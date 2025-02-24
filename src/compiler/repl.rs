@@ -18,12 +18,12 @@ use super::internal_repr::{
 };
 use super::lexer::Lexer;
 use super::type_system::{infer_expression_type, TypeInfo};
-use super::value::Value;
+use super::value::{RcValue, Value};
 
 #[derive(Clone, Debug)]
 struct PatternMatchResult {
     is_match: bool,
-    bindings: HashMap<IdentifierId, Rc<Value>>,
+    bindings: HashMap<IdentifierId, RcValue>,
 }
 
 impl PatternMatchResult {
@@ -34,7 +34,7 @@ impl PatternMatchResult {
         }
     }
 
-    fn with_match(bindings: HashMap<IdentifierId, Rc<Value>>) -> Self {
+    fn with_match(bindings: HashMap<IdentifierId, RcValue>) -> Self {
         Self {
             is_match: true,
             bindings,
@@ -143,7 +143,7 @@ impl REPL {
         &self,
         function_id: &IdentifierId,
         pattern: &Pattern,
-        args: &Vec<Rc<Value>>,
+        args: &Vec<RcValue>,
     ) -> Result<PatternMatchResult, String> {
         if pattern.components.len() != args.len() {
             return Err(format!(
@@ -351,8 +351,8 @@ impl REPL {
     fn evaluate_function_call(
         &mut self,
         function_call: &FunctionCall,
-        identifier_values: &Rc<HashMap<IdentifierId, Rc<Value>>>,
-    ) -> Result<Rc<Value>, String> {
+        identifier_values: &Rc<HashMap<IdentifierId, RcValue>>,
+    ) -> Result<RcValue, String> {
         match function_call.id {
             ADD_ID | SUB_ID | MUL_ID | DIV_ID => {
                 if function_call.parameters.len() < 2 {
@@ -596,9 +596,9 @@ impl REPL {
     fn evaluate_function_definition(
         &mut self,
         definition: &Rc<FunctionDefinition>,
-        parameter_values: &Vec<Rc<Value>>,
-        captures: &Rc<HashMap<IdentifierId, Rc<Value>>>,
-    ) -> Result<Rc<Value>, String> {
+        parameter_values: &Vec<RcValue>,
+        captures: &Rc<HashMap<IdentifierId, RcValue>>,
+    ) -> Result<RcValue, String> {
         let mut arg_values = captures.as_ref().clone();
         let mut ordered_arg_values = Vec::new();
         for i in 0..parameter_values.len() {
@@ -622,7 +622,7 @@ impl REPL {
                     return self.evaluate_expression(&arg_values, expression);
                 }
 
-                let mut new_bindings: HashMap<i32, Rc<Value>> = arg_values.as_ref().clone();
+                let mut new_bindings: HashMap<i32, RcValue> = arg_values.as_ref().clone();
                 for (k, v) in &bindings {
                     new_bindings.insert(*k, Rc::clone(v));
                 }
@@ -646,9 +646,9 @@ impl REPL {
 
     fn evaluate_expression(
         &mut self,
-        identifier_values: &Rc<HashMap<IdentifierId, Rc<Value>>>,
+        identifier_values: &Rc<HashMap<IdentifierId, RcValue>>,
         expression: &Expression,
-    ) -> Result<Rc<Value>, String> {
+    ) -> Result<RcValue, String> {
         match expression {
             Expression::TypeConstructor(id, variant, expressions) => {
                 let mut values = Vec::new();

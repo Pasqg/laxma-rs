@@ -12,18 +12,17 @@ use super::{
         WHILE_ID, WILDCARD_ID,
     },
     internal_repr::{
-        DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
-        TypeVariant,
+        DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type, TypeDefinition, TypeVariant
     },
 };
 
 #[derive(Debug, Clone)]
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<IdentifierId>,
-    pub(super) user_types: HashMap<IdentifierId, Rc<Type>>,
+    pub(super) user_types: HashMap<IdentifierId, RcType>,
     //todo: function_types and constant_types could be part of the same map
-    pub(super) function_types: HashMap<IdentifierId, Rc<Type>>,
-    pub(super) constant_types: Rc<HashMap<IdentifierId, Rc<Type>>>,
+    pub(super) function_types: HashMap<IdentifierId, RcType>,
+    pub(super) constant_types: Rc<HashMap<IdentifierId, RcType>>,
 }
 
 impl TypeInfo {
@@ -130,7 +129,7 @@ impl TypeInfo {
 
 #[derive(Debug)]
 struct TypeParameterBindings {
-    bindings: HashMap<IdentifierId, Rc<Type>>,
+    bindings: HashMap<IdentifierId, RcType>,
 }
 
 impl TypeParameterBindings {
@@ -140,7 +139,7 @@ impl TypeParameterBindings {
         }
     }
 
-    fn concretize(&self, _type: &Rc<Type>) -> Rc<Type> {
+    fn concretize(&self, _type: &RcType) -> RcType {
         match _type.as_ref() {
             Type::FunctionType(id, inputs, outputs, captures) => Rc::new(Type::FunctionType(
                 *id,
@@ -163,7 +162,7 @@ impl TypeParameterBindings {
         }
     }
 
-    fn are_compatible(&mut self, first: &Rc<Type>, second: &Rc<Type>) -> bool {
+    fn are_compatible(&mut self, first: &RcType, second: &RcType) -> bool {
         //todo: this concretization should only work one way! List['T] as argument for List[Int] is not valid
 
         match (first.as_ref(), second.as_ref()) {
@@ -234,13 +233,13 @@ impl TypeParameterBindings {
 fn concretize_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &Rc<HashMap<IdentifierId, Rc<Type>>>,
+    identifier_types: &Rc<HashMap<IdentifierId, RcType>>,
     caller_id: &IdentifierId,
     function_id: &IdentifierId,
-    function_type: &Rc<Type>,
-    arguments: &Vec<Rc<Type>>,
+    function_type: &RcType,
+    arguments: &Vec<RcType>,
     parameters: &Vec<Expression>,
-) -> Result<Rc<Type>, String> {
+) -> Result<RcType, String> {
     let mut type_parameters_bindings = TypeParameterBindings::new();
     if parameters.len() != arguments.len() {
         return Err(format!(
@@ -284,10 +283,10 @@ fn concretize_function_type(
 pub fn infer_expression_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &Rc<HashMap<IdentifierId, Rc<Type>>>,
+    identifier_types: &Rc<HashMap<IdentifierId, RcType>>,
     current_function_id: &IdentifierId,
     expression: &Expression,
-) -> Result<Rc<Type>, String> {
+) -> Result<RcType, String> {
     match expression {
         Expression::TypeConstructor(type_id, variant, expressions) => {
             let type_variant = {
@@ -580,8 +579,8 @@ pub fn infer_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
     current_function: &FunctionDefinition,
-    captures: Option<Rc<HashMap<IdentifierId, Rc<Type>>>>,
-) -> Result<Rc<Type>, String> {
+    captures: Option<Rc<HashMap<IdentifierId, RcType>>>,
+) -> Result<RcType, String> {
     let mut arg_types = type_info.constant_types.as_ref().clone();
     if captures.is_some() {
         for (k, v) in captures.as_ref().unwrap().as_ref() {

@@ -14,18 +14,20 @@ use super::{
     identifier_map::{IdentifierId, IdentifierIdMap, UNKNOWN_ID},
 };
 
+pub(super) type RcType = Rc<Type>;
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(super) enum Type {
     SimpleType(IdentifierId),
     TypeParameter(IdentifierId),
-    ParametrizedType(IdentifierId, Vec<Rc<Type>>),
+    ParametrizedType(IdentifierId, Vec<RcType>),
     // IdentifierId is the id of the type name, not the name of the function
     // (id, arguments types, return type, captures types)
     FunctionType(
         IdentifierId,
-        Vec<Rc<Type>>,
-        Rc<Type>,
-        Option<Rc<HashMap<IdentifierId, Rc<Type>>>>,
+        Vec<RcType>,
+        RcType,
+        Option<Rc<HashMap<IdentifierId, RcType>>>,
     ),
     Unknown,
 }
@@ -45,7 +47,7 @@ impl Type {
         }
     }
 
-    pub fn as_return_type(&self) -> Rc<Type> {
+    pub fn as_return_type(&self) -> RcType {
         match self {
             Type::FunctionType(_, _, return_type, _) => Rc::clone(return_type),
             _ => panic!("Not a function type: '{:?}'", self),
@@ -108,9 +110,9 @@ impl Type {
 
     pub fn create_function_type(
         identifier_id_map: &mut IdentifierIdMap,
-        types: Vec<Rc<Type>>,
-        return_type: Rc<Type>,
-        captures: Option<Rc<HashMap<IdentifierId, Rc<Type>>>>,
+        types: Vec<RcType>,
+        return_type: RcType,
+        captures: Option<Rc<HashMap<IdentifierId, RcType>>>,
     ) -> Type {
         let lambda_name_id = identifier_id_map.get_id(&Rc::new(format!(
             "({}) -> {}",
@@ -128,12 +130,12 @@ impl Type {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) enum TypeVariant {
     Constant(String),
-    Cartesian(String, Vec<Rc<Type>>),
+    Cartesian(String, Vec<RcType>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct TypeDefinition {
-    pub(super) def: Rc<Type>,
+    pub(super) def: RcType,
     pub(super) variants: HashMap<IdentifierId, Rc<TypeVariant>>,
 }
 
@@ -180,7 +182,7 @@ pub(super) enum Expression {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct FunctionArgument {
     pub(super) identifier: IdentifierId,
-    pub(super) typing: Rc<Type>,
+    pub(super) typing: RcType,
 }
 
 #[derive(Debug, PartialEq, Clone)]

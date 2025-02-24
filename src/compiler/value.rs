@@ -2,15 +2,17 @@ use std::{collections::HashMap, fmt::Display, mem, rc::Rc};
 
 use super::{identifier_map::IdentifierId, internal_repr::FunctionDefinition};
 
+//todo: eventually crate feature
+pub(super) type RcValue = Rc<Value>;
 
 #[derive(Clone, Debug)]
 pub(super) enum Value {
-    Typed(IdentifierId, IdentifierId, Vec<Rc<Value>>),
+    Typed(IdentifierId, IdentifierId, Vec<RcValue>),
     Integer(i64),
     Float(f32),
     Bool(bool),
     String(Rc<String>),
-    Function(Rc<FunctionDefinition>, Rc<HashMap<IdentifierId, Rc<Value>>>),
+    Function(Rc<FunctionDefinition>, Rc<HashMap<IdentifierId, RcValue>>),
     Void,
 }
 
