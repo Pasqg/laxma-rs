@@ -28,7 +28,7 @@ impl TokenStream {
         Self::with_offset(tokens, 0)
     }
 
-    pub fn from_str(tokens: Vec<&str>) -> Self {
+    pub fn from_str(tokens: &[&str]) -> Self {
         Self::new(Rc::new(
             tokens.into_iter().map(|str| Token::str(str)).collect(),
         ))

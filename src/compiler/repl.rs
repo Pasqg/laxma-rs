@@ -5,7 +5,7 @@ use std::time::Instant;
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::infer_function_type;
 use crate::parser::combinators::ParserCombinator;
-use crate::{compiler::grammar, parser::token_stream::TokenStream};
+use crate::compiler::grammar;
 
 use super::identifier_map::{
     IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID,
@@ -16,6 +16,7 @@ use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
     Program,
 };
+use super::lexer::Lexer;
 use super::type_system::{infer_expression_type, TypeInfo};
 use super::value::Value;
 
@@ -55,8 +56,7 @@ impl REPL {
     }
 
     pub fn handle_input(&mut self, input: &str) {
-        let tokens: Vec<&str> = input.split_whitespace().collect();
-        let tokens = TokenStream::from_str(tokens);
+        let tokens = Lexer::token_stream(input);
 
         //todo: parse should return Result<ParserResult>
         let mut result = grammar::program_parser().parse(&tokens);

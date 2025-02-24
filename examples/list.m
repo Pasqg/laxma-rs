@@ -1,102 +1,107 @@
-fn -- x : Int -> - ( x 1 )
-fn ++ x : Int -> + ( x 1 )
+fn -- x:Int -> -(x 1)
+fn ++ x: Int -> +(x 1)
 
-type List [ 'T ] -> Empty | List 'T List [ 'T ]
+type List['T] -> Empty | List 'T List ['T]
 
-type Option [ 'T ] -> None | Some 'T
+type Option['T] -> None | Some 'T
 
-type Pair [ 'P , 'Q ] -> Pair 'P 'Q
+type Pair['P, 'Q] -> Pair 'P 'Q
 
-fn pair_first pair : Pair [ 'P , 'Q ] = Pair x _ -> x
-fn pair_second pair : Pair [ 'P , 'Q ] = Pair _ x -> x
+fn pair p:'P q:'Q -> Pair::Pair(p q)
+fn pair_first pair:Pair['P, 'Q] = Pair x _ -> x
+fn pair_second pair:Pair['P, 'Q] = Pair _ x -> x
 
-fn empty -> List :: Empty ( )
+fn empty -> List::Empty()
 
-fn cons x : 'T xs : List [ 'T ] ->
-    List :: List ( x xs )
+fn cons x:'T xs:List['T] -> List::List(x xs)
 
-fn empty? x : List [ 'T ] =
+fn empty? x:List['T] =
     Empty -> true
     List _ _ -> false
 
-fn concat xs : List [ 'T ] ys : List [ 'T ] =
+fn concat xs:List['T] ys:List['T] =
     _ , Empty -> xs
     Empty , _ -> ys
-    List x xs , _ -> cons ( x concat ( xs ys ) )
+    List x xs , _ -> cons(x concat(xs ys))
 
-fn list x : 'T ->
-    cons ( x empty ( ) )
+fn list x:'T ->
+    cons(x empty())
 
-fn first xs : List [ 'T ] =
+fn first xs:List['T] =
     List x _ -> x
 
-fn rest x : List [ 'T ] =
+fn rest x:List['T] =
     Empty -> x
     List _ xs -> xs
 
-fn second x : List [ 'T ] -> first ( rest ( x ) )
+fn second x:List['T] -> first(rest(x))
 
-fn length x : List [ 'T ] = 
+fn length x:List['T] = 
     Empty -> 0
-    List _ xs -> + ( 1 length ( xs ) )
+    List _ xs -> +(1 length(xs))
 
-fn list_of n : Int x : 'T =
-    1 , _ -> list ( x )
-    _ , _ -> cons ( x list_of ( - ( n 1 ) x ) )
+fn list_of n:Int x:'T =
+    1 , _ -> list(x)
+    _ , _ -> cons(x list_of(-(n 1) x))
 
-fn for n : Int
-    over : 'T
-    f : ( 'T ) -> 'T
-    -> with result = while (
-            Pair :: Pair ( 0 over )
-            ( pair : Pair [ Int , 'T ] ) ->
-                Pair :: Pair (
-                    ++ ( pair_first ( pair ) )
-                    f ( pair_second ( pair ) )
-                )
-            ( pair : Pair [ Int , 'T ] ) -> < ( pair_first ( pair ) n )
+fn recur_while init:'T update:('T)->'T condition:('T)->Bool ->
+    if condition(init)
+        recur_while(update(init) update condition)
+        init
+
+fn for
+    n: Int
+    init: 'T
+    f: ('T) -> 'T
+    -> with result = while(
+            pair(0 init)
+            (x:Pair[Int,'T]) -> pair(++(pair_first(x)) f(pair_second(x)))
+           (x:Pair[Int , 'T]) -> <(pair_first(x) n)
         )
-        pair_second ( result )
+        pair_second(result)
 
-fn range n : Int = 
-    0 -> empty ( )
-    _ -> with k = -- ( n ) while (
-            list ( 0 )
-            ( xs : List [ Int ] ) -> cons ( ++ ( first ( xs ) ) xs )
-            ( xs : List [ Int ] ) -> < ( first ( xs ) k )
+fn recursive_range n:Int = 
+    0 -> empty()
+    _ -> cons(n recursive_range(--(n)))
+
+fn while_range n:Int = 
+    0 -> empty()
+    _ -> with k = --(n) while(
+            list(0)
+            (xs:List[Int]) -> cons(++(first(xs)) xs)
+            (xs:List[Int]) -> <(first(xs) k)
         )
 
-fn filter pred : ( 'T ) -> Bool xs : List [ 'T ] =
-    _ , Empty -> empty ( )
+fn filter pred :('T)->Bool xs:List['T] =
+    _ , Empty -> empty()
     _ , List x xs ->
-        if pred ( x )
-            cons ( x filter ( pred xs ) )
-            filter ( pred xs )
+        if pred(x)
+            cons(x filter(pred xs))
+            filter(pred xs)
 
-fn map f : ( 'P ) -> 'Q xs : List [ 'P ] =
-    _ , Empty -> empty ( )
-    _ , List x xs -> cons ( f ( x ) map ( f xs ) )
+fn map f:('P)->'Q xs:List['P] =
+    _ , Empty -> empty()
+    _ , List x xs -> cons(f(x) map(f xs))
 
 fn reduce
-        f : ( 'Result 'T ) -> 'Result
-        init : 'Result
-        xs : List [ 'T ]
+        f:('Result 'T) -> 'Result
+        init: 'Result
+        xs: List['T]
     =
     _ , _ , Empty -> init
-    _ , _ , List x xs -> f ( reduce ( f init xs ) x )
+    _ , _ , List x xs -> f(reduce(f init xs) x)
 
-fn quicksort xs : List [ Int ] =
-    Empty -> empty ( )
+fn quicksort xs:List[Int] =
+    Empty -> empty()
     List pivot xs ->
-        with smaller = ( x : Int ) -> < ( x pivot )
-            bigger = ( x : Int ) -> >= ( x pivot )
-            left = filter ( smaller xs )
-            right = filter ( bigger xs )
-            concat ( quicksort ( left ) concat ( list ( pivot ) quicksort ( right ) ) )
-
-fn random seed : Int -> with x = + ( seed * ( seed 1226138780960301465 ) ) if > ( x 0 ) x * ( -- ( 0 ) x )
-
-fn randomlist n : Int seed : Int =
-    0 , _ -> empty ( )
-    1 , _ -> list ( random ( seed ) )
-    _ , _ -> with xs = randomlist ( -- ( n ) seed ) cons ( random ( first ( xs ) ) xs )
+        with smaller =(x:Int) -> <(x pivot)
+            bigger =(x:Int) -> >=(x pivot)
+            left = filter(smaller xs)
+            right = filter(bigger xs)
+            concat(
+                quicksort(left)
+                concat(
+                    list(pivot)
+                    quicksort(right)
+               )
+           )

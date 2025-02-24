@@ -37,28 +37,44 @@ pub enum Rules {
     Program,
 }
 
+const IDENTIFIER_REGEX: &'static str = r"[a-zA-Z?_\+\-\*\/><=\^][a-zA-Z?_\+\-\*\/0-9\^=]*";
+const INTEGER_REGEX: &'static str = r"[\-\+]?\d+";
+const FLOAT_REGEX: &'static str = r"[\-\+]?\d+\.\d+";
+const STRING_REGEX: &'static str = r#"\"[^\"]*\""#;
+const TYPE_PARAMETER_REGEX: &'static str = r"'[a-zA-Z]+";
+const STANDALONE_REGEX: &'static str = r"->|::|:|\||[,\[\]\(\)]";
+
+pub(super) const LEXER_REGEX: [&'static str; 6] = [
+    STANDALONE_REGEX,
+    IDENTIFIER_REGEX,
+    INTEGER_REGEX,
+    FLOAT_REGEX,
+    STRING_REGEX,
+    TYPE_PARAMETER_REGEX,
+];
+
 fn identifier() -> Combinators<Rules> {
     exclude(
         Combinators::MatchRegex(MatchRegex::new(
             Some(Rules::Identifier),
-            r"[a-zA-Z?_\+\-\*\/:><=\^][a-zA-Z?_\+\-\*\/:0-9\^=]*",
+            IDENTIFIER_REGEX,
         )),
         or_match_flat(vec![slit("fn"), slit("type"), slit("with"), slit("if")]),
     )
 }
 
 fn string() -> Combinators<Rules> {
-    Combinators::MatchRegex(MatchRegex::new(Some(Rules::String), r#"\"[^\"]*\""#))
+    Combinators::MatchRegex(MatchRegex::new(Some(Rules::String), STRING_REGEX))
 }
 
 fn integer() -> Combinators<Rules> {
-    Combinators::MatchRegex(MatchRegex::new(Some(Rules::Integer), r"[\-\+]?[0-9]+"))
+    Combinators::MatchRegex(MatchRegex::new(Some(Rules::Integer), INTEGER_REGEX))
 }
 
 fn float() -> Combinators<Rules> {
     Combinators::MatchRegex(MatchRegex::new(
         Some(Rules::Float),
-        r"[\-\+]?[0-9]+\.[0-9]+",
+        FLOAT_REGEX,
     ))
 }
 
@@ -67,7 +83,7 @@ fn basic_type_name() -> Combinators<Rules> {
 }
 
 fn type_parameter() -> Combinators<Rules> {
-    Combinators::MatchRegex(MatchRegex::new(Some(Rules::TypeParameter), r"'[a-zA-Z]+"))
+    Combinators::MatchRegex(MatchRegex::new(Some(Rules::TypeParameter), TYPE_PARAMETER_REGEX))
 }
 
 fn destructuring() -> Combinators<Rules> {
