@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
 
+use crate::compiler::grammar;
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::infer_function_type;
-use crate::parser::combinators::ParserCombinator;
 use crate::compiler::grammar;
 
 use super::identifier_map::{
@@ -169,9 +169,9 @@ impl REPL {
 
                                 if !values.is_empty() {
                                     return Err(format!("Cannot destructure variant '{}' of type '{}' with zero elements, because constructor requires {} arguments",
-                                self.program.var_name(variant),
-                                self.program.var_name(id),
-                                values.len()));
+                                        self.program.var_name(variant),
+                                        self.program.var_name(id),
+                                        values.len()));
                                 }
                             }
                         }
@@ -507,7 +507,7 @@ impl REPL {
                 for i in 0..n {
                     result = Rc::new(Value::Typed(
                         LIST_ID,
-                        EMPTY_LIST_ID,
+                        LIST_ID,
                         vec![Rc::new(Value::Integer(i)), result],
                     ));
                 }
