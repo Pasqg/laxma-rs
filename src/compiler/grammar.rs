@@ -44,11 +44,12 @@ const STRING_REGEX: &'static str = r#"\"[^\"]*\""#;
 const TYPE_PARAMETER_REGEX: &'static str = r"'[a-zA-Z]+";
 const STANDALONE_REGEX: &'static str = r"->|::|:|\||[,\[\]\(\)]";
 
+// Order matters
 pub(super) const LEXER_REGEX: [&'static str; 6] = [
     STANDALONE_REGEX,
-    IDENTIFIER_REGEX,
-    INTEGER_REGEX,
     FLOAT_REGEX,
+    INTEGER_REGEX,
+    IDENTIFIER_REGEX,
     STRING_REGEX,
     TYPE_PARAMETER_REGEX,
 ];
@@ -231,10 +232,10 @@ pub fn expression_parser() -> Combinators<Rules> {
             if_expression(),
             function_call(),
             type_constructor(),
-            identifier(),
-            string(),
             float(),
             integer(),
+            identifier(),
+            string(),
         ],
     );
     expression.bind(expression_body);
@@ -257,7 +258,7 @@ fn function_pattern_matching() -> Combinators<Rules> {
                     vec![
                         at_least_one(
                             None,
-                            or_match_flat(vec![destructuring(), identifier(), string(), float(), integer()]),
+                            or_match_flat(vec![destructuring(), float(), integer(), identifier(), string()]),
                             Some(slit(",")),
                         ),
                         function_body(),
