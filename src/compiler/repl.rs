@@ -729,40 +729,113 @@ mod tests {
     fn test_type_errors() {
         let mut repl = REPL::new();
 
-        assert_eq!(repl.handle_input("type Type -> A | B | C Int"), Ok(String::new()));
-        assert_eq!(repl.handle_input("type Type -> A | B | C D"), Err("Undefined type 'D' for Type::C".to_string()));
+        assert_eq!(
+            repl.handle_input("type Type -> A | B | C Type"),
+            Ok(String::new())
+        );
+        assert_eq!(
+            repl.handle_input("type Type -> A | B | C Int"),
+            Ok(String::new())
+        );
+        assert_eq!(
+            repl.handle_input("type Type -> A | B | C D"),
+            Err("Undefined type 'D' for Type::C".to_string())
+        );
 
         assert_eq!(repl.handle_input("Type::A()"), Ok("Type::A()".to_string()));
-        assert_eq!(repl.handle_input("Type::A(0)"), Err("Variant 'A' of type 'Type' expects 0 arguments but constructor provided 1".to_string()));
+        assert_eq!(
+            repl.handle_input("Type::A(0)"),
+            Err(
+                "Variant 'A' of type 'Type' expects 0 arguments but constructor provided 1"
+                    .to_string()
+            )
+        );
         assert_eq!(repl.handle_input("Type::B()"), Ok("Type::B()".to_string()));
-        assert_eq!(repl.handle_input("Type::B(0)"), Err("Variant 'B' of type 'Type' expects 0 arguments but constructor provided 1".to_string()));
-        assert_eq!(repl.handle_input("Type::C()"), Err("Variant 'C' of type 'Type' expects 1 arguments but constructor provided 0".to_string()));
-        assert_eq!(repl.handle_input("Type::C(0)"), Ok("Type::C(0)".to_string()));
-        assert_eq!(repl.handle_input("Type::C(4.5)"), Err("Expecting 'Int' in constructor for Type::C but got 'Float'".to_string()));
-        assert_eq!(repl.handle_input("Type::C(2 2)"), Err("Variant 'C' of type 'Type' expects 1 arguments but constructor provided 2".to_string()));
+        assert_eq!(
+            repl.handle_input("Type::B(0)"),
+            Err(
+                "Variant 'B' of type 'Type' expects 0 arguments but constructor provided 1"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            repl.handle_input("Type::C()"),
+            Err(
+                "Variant 'C' of type 'Type' expects 1 arguments but constructor provided 0"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            repl.handle_input("Type::C(0)"),
+            Ok("Type::C(0)".to_string())
+        );
+        assert_eq!(
+            repl.handle_input("Type::C(4.5)"),
+            Err("Expecting 'Int' in constructor for Type::C but got 'Float'".to_string())
+        );
+        assert_eq!(
+            repl.handle_input("Type::C(2 2)"),
+            Err(
+                "Variant 'C' of type 'Type' expects 1 arguments but constructor provided 2"
+                    .to_string()
+            )
+        );
 
-        assert_eq!(repl.handle_input("Type::D()"), Err("Undefined variant 'D' for type 'Type' in function 'REPL'".to_string()));
-        assert_eq!(repl.handle_input("Types::A()"), Err("Undefined type 'Types' in function 'REPL'".to_string()));
+        assert_eq!(
+            repl.handle_input("Type::D()"),
+            Err("Undefined variant 'D' for type 'Type' in function 'REPL'".to_string())
+        );
+        assert_eq!(
+            repl.handle_input("Types::A()"),
+            Err("Undefined type 'Types' in function 'REPL'".to_string())
+        );
     }
     #[test]
     fn test_parametrized_type_errors() {
         let mut repl = REPL::new();
 
-        assert_eq!(repl.handle_input("type Type['T] -> A | B"), Ok(String::new()));
-        assert_eq!(repl.handle_input("type Type['T] -> A | B 'T"), Ok(String::new()));
-        assert_eq!(repl.handle_input("type Type['T] -> A | B 'P"), Err("Undefined type ''P' for Type::B".to_string()));
+        assert_eq!(
+            repl.handle_input("type Type['T] -> A | B"),
+            Ok(String::new())
+        );
+        assert_eq!(
+            repl.handle_input("type Type['T] -> A | B 'T"),
+            Ok(String::new())
+        );
+        assert_eq!(
+            repl.handle_input("type Type['T] -> A | B 'P"),
+            Err("Undefined type ''P' for Type::B".to_string())
+        );
     }
 
     #[test]
     fn test_function_type_errors() {
         let mut repl = REPL::new();
 
-        assert_eq!(repl.handle_input("fn test x:Int -> List::A(x)"), Err("Undefined type 'List' in function 'test'".to_string()));
-        assert_eq!(repl.handle_input("fn test x:Int -> 2.3"), Ok("".to_string()));
+        assert_eq!(
+            repl.handle_input("fn test x:Int -> List::A(x)"),
+            Err("Undefined type 'List' in function 'test'".to_string())
+        );
+        assert_eq!(
+            repl.handle_input("fn test x:Int -> 2.3"),
+            Ok("".to_string())
+        );
 
-        assert_eq!(repl.handle_input("test()"), Err("Function 'test' in caller 'REPL' expects 1 arguments but 0 were provided".to_string()));
+        assert_eq!(
+            repl.handle_input("test()"),
+            Err(
+                "Function 'test' in caller 'REPL' expects 1 arguments but 0 were provided"
+                    .to_string()
+            )
+        );
         assert_eq!(repl.handle_input("test(2)"), Ok("2.3".to_string()));
-        assert_eq!(repl.handle_input("test(2 2)"), Err("Function 'test' in caller 'REPL' expects 1 arguments but 2 were provided".to_string()));
+        assert_eq!(
+            repl.handle_input("test(2 2)"),
+            Err(
+                "Function 'test' in caller 'REPL' expects 1 arguments but 2 were provided"
+                    .to_string()
+            )
+        );
         assert_eq!(repl.handle_input("test(2.2)"), Err("Argument 0 in function 'test' in caller 'REPL' has type 'Int' ('Int') but 'Float' ('Float') was provided".to_string()));
     }
 }
