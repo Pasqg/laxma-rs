@@ -16,7 +16,8 @@ use super::{
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
         TypeVariant,
-    }, utils::to_int_map,
+    },
+    utils::to_int_map,
 };
 
 #[derive(Debug, Clone)]
@@ -281,6 +282,32 @@ fn concretize_function_type(
     Ok(type_parameters_bindings
         .concretize(function_type)
         .as_return_type())
+}
+
+pub fn verify_type_definition(
+    program: &mut Program,
+    type_info: &TypeInfo,
+    type_definition: &TypeDefinition,
+) -> Result<(), String> {
+    for (id, variant) in &type_definition.variants {
+        match variant.as_ref() {
+            TypeVariant::Constant(_) => {}
+            TypeVariant::Cartesian(_, types) => {
+                for t in types {
+                    if !type_info.type_exists(&t.id()) {
+                        return Err(format!(
+                            "Undefined type '{}' for {}::{}",
+                            program.var_name(&t.id()),
+                            program.var_name(&type_definition.def.id()),
+                            program.var_name(id)
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn infer_expression_type(
@@ -758,9 +785,7 @@ pub fn infer_function_type(
             (1, true) => Ok(Rc::new(Type::create_function_type(
                 &mut program.identifier_id_map,
                 function_type_args,
-                Rc::clone(
-                    &type_parameters_bindings.concretize(branch_types.iter().next().unwrap()),
-                ),
+                Rc::clone(&type_parameters_bindings.concretize(&branch_types[0])),
                 Some(arg_types),
             ))),
             (_, true) => Ok(Rc::new(Type::create_function_type(

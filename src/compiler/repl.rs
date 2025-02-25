@@ -6,7 +6,7 @@ use nohash_hasher::IntMap;
 
 use crate::compiler::grammar;
 use crate::compiler::internal_repr::to_repr;
-use crate::compiler::type_system::infer_function_type;
+use crate::compiler::type_system::{infer_function_type, verify_type_definition};
 use crate::parser::combinators::ParserCombinator;
 
 use super::identifier_map::{
@@ -58,7 +58,7 @@ impl REPL {
         }
     }
 
-    pub fn handle_input(&mut self, input: &str) {
+    pub fn handle_input(&mut self, input: &str) -> Result<String, String> {
         let tokens = Lexer::token_stream(input);
 
         //todo: parse should return Result<ParserResult>
@@ -68,8 +68,7 @@ impl REPL {
         }
 
         if !result.result || result.remaining.not_done() {
-            println!("ERROR: Failed to parse! {:?}", result.remaining);
-            return;
+            return Err(format!("ERROR: Failed to parse! {:?}", result.remaining));
         }
 
         let ast = result.ast;
@@ -80,66 +79,65 @@ impl REPL {
                 types,
                 identifier_id_map: _,
             } = result.unwrap();
+
             for (id, definition) in types {
+                verify_type_definition(&mut self.program, &self.type_info, &definition)?;
+
                 println!("Defined type {}", self.var_name(&id));
 
                 self.type_info.add_user_type(id, &definition);
                 self.program.types.insert(id, definition);
             }
+
             for key in functions.keys() {
                 let (id, definition) = (key, functions.get(key.as_ref()).unwrap());
-                let result =
-                    infer_function_type(&mut self.program, &self.type_info, &definition, None);
-                if result.is_err() {
-                    println!("ERROR: {}", result.unwrap_err());
-                } else {
-                    let function_type = result.unwrap();
-                    println!(
-                        "Defined function {}: {}",
-                        self.program.var_name(id),
-                        self.program.var_name(&function_type.id()),
-                    );
+                let function_type =
+                    infer_function_type(&mut self.program, &self.type_info, &definition, None)?;
 
-                    self.program.functions.insert(**id, Rc::clone(definition));
-                    self.type_info.function_types.insert(**id, function_type);
-                }
-            }
-        } else {
-            let original_error = result.unwrap_err();
-            let result = expression_repr(&ast, &mut self.program.identifier_id_map);
-            if result.is_ok() {
-                let values = to_int_map(HashMap::from([
-                    (TRUE_ID, Rc::new(Value::Bool(true))),
-                    (FALSE_ID, Rc::new(Value::Bool(false))),
-                ]));
-                let start = Instant::now();
-                let expression = result.unwrap();
-                let expr_type = infer_expression_type(
-                    &mut self.program,
-                    &self.type_info,
-                    &Rc::clone(&self.type_info.constant_types),
-                    &REPL_ID,
-                    &expression,
+                println!(
+                    "Defined function {}: {}",
+                    self.program.var_name(id),
+                    self.program.var_name(&function_type.id()),
                 );
-                let result = self.evaluate_expression(&Rc::new(values), &expression);
 
-                if result.is_ok() && expr_type.is_ok() {
-                    println!(
-                        "\nType: {}",
-                        &expr_type
-                            .unwrap()
-                            .full_repr(&self.program.identifier_id_map)
-                    );
-                    println!("Evaluated in {}us", start.elapsed().as_micros());
-                } else if result.is_err() {
-                    println!("ERROR: {}", result.unwrap_err());
-                } else {
-                    println!("ERROR: {}", expr_type.unwrap_err());
-                }
-            } else {
-                println!("ERROR(s): {} {}", original_error, result.unwrap_err());
+                self.program.functions.insert(**id, Rc::clone(definition));
+                self.type_info.function_types.insert(**id, function_type);
             }
+
+            return Ok(String::new());
         }
+
+        let original_error = result.unwrap_err();
+        let result = expression_repr(&ast, &mut self.program.identifier_id_map);
+        if result.is_ok() {
+            let values = to_int_map(HashMap::from([
+                (TRUE_ID, Rc::new(Value::Bool(true))),
+                (FALSE_ID, Rc::new(Value::Bool(false))),
+            ]));
+            let start = Instant::now();
+            let expression = result.unwrap();
+            let expr_type = infer_expression_type(
+                &mut self.program,
+                &self.type_info,
+                &Rc::clone(&self.type_info.constant_types),
+                &REPL_ID,
+                &expression,
+            )?;
+            let result = self.evaluate_expression(&Rc::new(values), &expression)?;
+
+            println!(
+                "\nType: {}",
+                &expr_type.full_repr(&self.program.identifier_id_map)
+            );
+            println!("Evaluated in {}us", start.elapsed().as_micros());
+            return Ok(result.value_to_str(&|id| Rc::clone(self.program.var_name(id)))?);
+        }
+
+        Err(format!(
+            "ERROR(s): {} {}",
+            original_error,
+            result.unwrap_err()
+        ))
     }
 
     fn pattern_match(
@@ -720,5 +718,43 @@ impl REPL {
 
     fn var_name(&self, id: &i32) -> &Rc<String> {
         self.program.identifier_id_map.get_identifier(id).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::REPL;
+
+    #[test]
+    fn test_type_errors() {
+        let mut repl = REPL::new();
+
+        assert_eq!(repl.handle_input("type Type -> A | B | C Int"), Ok(String::new()));
+        assert_eq!(repl.handle_input("type Type -> A | B | C D"), Err("Undefined type 'D' for Type::C".to_string()));
+
+        assert_eq!(repl.handle_input("Type::A()"), Ok("Type::A()".to_string()));
+        assert_eq!(repl.handle_input("Type::A(0)"), Err("Variant 'A' of type 'Type' expects 0 arguments but constructor provided 1".to_string()));
+        assert_eq!(repl.handle_input("Type::B()"), Ok("Type::B()".to_string()));
+        assert_eq!(repl.handle_input("Type::B(0)"), Err("Variant 'B' of type 'Type' expects 0 arguments but constructor provided 1".to_string()));
+        assert_eq!(repl.handle_input("Type::C()"), Err("Variant 'C' of type 'Type' expects 1 arguments but constructor provided 0".to_string()));
+        assert_eq!(repl.handle_input("Type::C(0)"), Ok("Type::C(0)".to_string()));
+        assert_eq!(repl.handle_input("Type::C(4.5)"), Err("Expecting 'Int' in constructor for Type::C but got 'Float'".to_string()));
+        assert_eq!(repl.handle_input("Type::C(2 2)"), Err("Variant 'C' of type 'Type' expects 1 arguments but constructor provided 2".to_string()));
+
+        assert_eq!(repl.handle_input("Type::D()"), Err("Undefined variant 'D' for type 'Type' in function 'REPL'".to_string()));
+        assert_eq!(repl.handle_input("Types::A()"), Err("Undefined type 'Types' in function 'REPL'".to_string()));
+    }
+
+    #[test]
+    fn test_function_type_errors() {
+        let mut repl = REPL::new();
+
+        assert_eq!(repl.handle_input("fn test x:Int -> List::A(x)"), Err("Undefined type 'List' in function 'test'".to_string()));
+        assert_eq!(repl.handle_input("fn test x:Int -> 2.3"), Ok("".to_string()));
+
+        assert_eq!(repl.handle_input("test()"), Err("Function 'test' in caller 'REPL' expects 1 arguments but 0 were provided".to_string()));
+        assert_eq!(repl.handle_input("test(2)"), Ok("2.3".to_string()));
+        assert_eq!(repl.handle_input("test(2 2)"), Err("Function 'test' in caller 'REPL' expects 1 arguments but 2 were provided".to_string()));
+        assert_eq!(repl.handle_input("test(2.2)"), Err("Argument 0 in function 'test' in caller 'REPL' has type 'Int' ('Int') but 'Float' ('Float') was provided".to_string()));
     }
 }

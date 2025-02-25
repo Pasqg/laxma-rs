@@ -7,8 +7,8 @@ use super::{identifier_map::IdentifierId, internal_repr::FunctionDefinition};
 //todo: eventually crate feature
 pub(super) type RcValue = Rc<Value>;
 
-#[derive(Clone, Debug)]
-pub(super) enum Value {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
     Typed(IdentifierId, IdentifierId, Vec<RcValue>),
     Integer(i64),
     Float(f32),
@@ -67,7 +67,7 @@ impl Display for Value {
 }
 
 impl Value {
-    pub(super) fn value_to_str(
+    pub fn value_to_str(
         &self,
         id_to_name: &impl Fn(&IdentifierId) -> Rc<String>,
     ) -> Result<String, String> {
