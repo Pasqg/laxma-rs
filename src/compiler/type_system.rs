@@ -289,12 +289,13 @@ pub fn verify_type_definition(
     type_info: &TypeInfo,
     type_definition: &TypeDefinition,
 ) -> Result<(), String> {
+    let type_params = type_definition.def.type_parameters();
     for (id, variant) in &type_definition.variants {
         match variant.as_ref() {
             TypeVariant::Constant(_) => {}
             TypeVariant::Cartesian(_, types) => {
                 for t in types {
-                    if !type_info.type_exists(&t.id()) {
+                    if !type_info.type_exists(&t.id()) && !type_params.contains(&t.id()) {
                         return Err(format!(
                             "Undefined type '{}' for {}::{}",
                             program.var_name(&t.id()),

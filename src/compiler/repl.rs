@@ -744,6 +744,14 @@ mod tests {
         assert_eq!(repl.handle_input("Type::D()"), Err("Undefined variant 'D' for type 'Type' in function 'REPL'".to_string()));
         assert_eq!(repl.handle_input("Types::A()"), Err("Undefined type 'Types' in function 'REPL'".to_string()));
     }
+    #[test]
+    fn test_parametrized_type_errors() {
+        let mut repl = REPL::new();
+
+        assert_eq!(repl.handle_input("type Type['T] -> A | B"), Ok(String::new()));
+        assert_eq!(repl.handle_input("type Type['T] -> A | B 'T"), Ok(String::new()));
+        assert_eq!(repl.handle_input("type Type['T] -> A | B 'P"), Err("Undefined type ''P' for Type::B".to_string()));
+    }
 
     #[test]
     fn test_function_type_errors() {
