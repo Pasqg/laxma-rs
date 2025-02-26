@@ -7,10 +7,12 @@ use nohash_hasher::IntMap;
 
 use super::{
     identifier_map::{
-        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNKNOWN_ID, VOID_ID, WILDCARD_ID
+        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNKNOWN_ID, VOID_ID,
+        WILDCARD_ID,
     },
     internal_repr::{
-        DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type, TypeDefinition, TypeVariant
+        DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type,
+        TypeDefinition, TypeVariant,
     },
     utils::to_int_map,
 };
@@ -156,7 +158,13 @@ impl TypeParameterBindings {
     }
 }
 
-fn get_identifier_type(program: &mut Program, type_info: &TypeInfo, identifier_types: &Rc<IntMap<IdentifierId, RcType>>, caller_id: &IdentifierId, id: &IdentifierId) -> Result<RcType, String> {
+fn get_identifier_type(
+    program: &mut Program,
+    type_info: &TypeInfo,
+    identifier_types: &Rc<IntMap<IdentifierId, RcType>>,
+    caller_id: &IdentifierId,
+    id: &IdentifierId,
+) -> Result<RcType, String> {
     let function_type = identifier_types.get(id);
     if function_type.is_some() {
         return Ok(Rc::clone(function_type.unwrap()));
@@ -179,14 +187,15 @@ fn get_identifier_type(program: &mut Program, type_info: &TypeInfo, identifier_t
         return Ok(Rc::clone(builtin.unwrap()));
     }
 
-    Err(format!("Undefined identifier '{}' in function '{}', known '{:?}'", program.var_name(id), program.var_name(caller_id), 
-    identifier_types
-        .iter()
-        .map(|(k, v)| (
-            program.var_name(k),
-            v.full_repr(&program.identifier_id_map)
-        ))
-        .collect::<Vec<(&Rc<String>, Rc<String>)>>()))
+    Err(format!(
+        "Undefined identifier '{}' in function '{}', known '{:?}'",
+        program.var_name(id),
+        program.var_name(caller_id),
+        identifier_types
+            .iter()
+            .map(|(k, v)| (program.var_name(k), v.full_repr(&program.identifier_id_map)))
+            .collect::<Vec<(&Rc<String>, Rc<String>)>>()
+    ))
 }
 
 fn concretize_function_type(
@@ -358,6 +367,46 @@ pub fn infer_expression_type(
             Ok(Rc::clone(&program.types.get(type_id).unwrap().def))
         }
         Expression::FunctionCall(function_call) => {
+            if *current_function_id == function_call.id {
+                return Ok(Rc::new(Type::Unknown));
+            }
+
+            let function_type = get_identifier_type(
+                program,
+                type_info,
+                identifier_types,
+                current_function_id,
+                &function_call.id,
+            );
+            if function_type.is_ok() {
+                let function_type = function_type.unwrap();
+                match function_type.as_ref() {
+                    Type::FunctionType(_, inputs, _, captures) => {
+                        return concretize_function_type(
+                            program,
+                            type_info,
+                            if captures.is_none() {
+                                identifier_types
+                            } else {
+                                captures.as_ref().unwrap()
+                            },
+                            current_function_id,
+                            &function_call.id,
+                            &function_type,
+                            &inputs,
+                            &function_call.parameters,
+                        );
+                    }
+                    _ => {
+                        return Err(format!(
+                            "'{}' with type '{} is not callable",
+                            program.var_name(&function_call.id),
+                            program.var_name(&function_type.id())
+                        ));
+                    }
+                }
+            }
+
             let function_type = type_info.function_types.get(&function_call.id);
             if function_type.is_some() {
                 let function_type = function_type.unwrap();
@@ -365,7 +414,7 @@ pub fn infer_expression_type(
                 let function_definition = program.functions.get(&function_call.id);
                 if function_definition.is_some() {
                     let function_definition = Rc::clone(function_definition.unwrap());
-                    concretize_function_type(
+                    return concretize_function_type(
                         program,
                         type_info,
                         identifier_types,
@@ -378,7 +427,7 @@ pub fn infer_expression_type(
                             .map(|arg| Rc::clone(&arg.typing))
                             .collect(),
                         &function_call.parameters,
-                    )
+                    );
                 } else {
                     match function_type.as_ref() {
                         Type::FunctionType(_, inputs, _, captures) => {
@@ -400,24 +449,17 @@ pub fn infer_expression_type(
                         _ => panic!("BUG"),
                     }
                 }
-            } else if *current_function_id == function_call.id {
-                Ok(Rc::new(Type::Unknown))
-            } else {
-                let function_type = get_identifier_type(program, type_info, identifier_types, current_function_id, &function_call.id)?;
-
-                match function_type.as_ref() {
-                    Type::FunctionType(_, _, return_type, _) => {
-                        return Ok(Rc::clone(return_type));
-                    }
-                    _ => {
-                        return Err(format!(
-                            "'{}' with type '{} is not callable",
-                            program.var_name(&function_call.id),
-                            program.var_name(&function_type.id())
-                        ));
-                    }
-                }
             }
+
+            Err(format!(
+                "Undefined identifier '{}' in function '{}', known '{:?}'",
+                program.var_name(&function_call.id),
+                program.var_name(current_function_id),
+                identifier_types
+                    .iter()
+                    .map(|(k, v)| (program.var_name(k), v.full_repr(&program.identifier_id_map)))
+                    .collect::<Vec<(&Rc<String>, Rc<String>)>>()
+            ))
         }
         Expression::WithBlock(items, expression) => {
             let mut inner_types = identifier_types.as_ref().clone();
@@ -498,8 +540,13 @@ pub fn infer_expression_type(
 
             Ok(true_type)
         }
-        Expression::Identifier(id) =>
-            get_identifier_type(program, type_info, identifier_types, current_function_id, id),
+        Expression::Identifier(id) => get_identifier_type(
+            program,
+            type_info,
+            identifier_types,
+            current_function_id,
+            id,
+        ),
         Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
         Expression::String(_) => Ok(Rc::new(Type::SimpleType(STRING_ID))),
         Expression::Float(_) => Ok(Rc::new(Type::SimpleType(FLOAT_ID))),
@@ -539,6 +586,7 @@ pub fn infer_function_type(
                 argument.identifier, current_function.id
             ),
             Type::FunctionType(_, args, return_type, _) => {
+                //todo: should use capture types?
                 for arg_type in args {
                     if !arg_type.is_type_parameter() && !type_info.type_exists(&arg_type.id()) {
                         return Err(format!(

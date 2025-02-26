@@ -127,7 +127,7 @@ impl REPL {
                 &REPL_ID,
                 &expression,
             )?;
-            let result = self.evaluate_expression(&Rc::new(values), &expression)?;
+            let result = self.evaluate_expression(&REPL_ID, &Rc::new(values), &expression)?;
 
             println!(
                 "\nType: {}",
@@ -365,22 +365,16 @@ impl REPL {
 
     fn evaluate_function_call(
         &self,
+        caller_id: &IdentifierId,
         function_call: &FunctionCall,
         identifier_values: &Rc<IntMap<IdentifierId, RcValue>>,
     ) -> Result<RcValue, String> {
         let mut captures = identifier_values.as_ref().clone();
 
         let definition = {
-            let mut definition = self.program.functions.get(&function_call.id);
-            if definition.is_none() {
-                let function_value = identifier_values.get(&function_call.id);
-                if function_value.is_none() {
-                    return Err(format!(
-                        "Function '{}' is not defined",
-                        self.program.var_name(&function_call.id)
-                    ));
-                }
-
+            let function_value = identifier_values.get(&function_call.id);
+            let definition;
+            if function_value.is_some() && *caller_id != function_call.id {
                 let function_value = function_value.unwrap();
                 match function_value.as_ref() {
                     Value::Function(function_definition, lambda_captures) => {
@@ -397,6 +391,17 @@ impl REPL {
                                 .value_to_str(&|id| Rc::clone(self.program.var_name(id)))?,
                         ));
                     }
+                }
+            } else {
+                definition = self.program.functions.get(&function_call.id);
+            }
+
+            if definition.is_none() {
+                if function_value.is_none() {
+                    return Err(format!(
+                        "Function '{}' is not defined",
+                        self.program.var_name(&function_call.id)
+                    ));
                 }
             }
             Rc::clone(definition.unwrap())
@@ -417,7 +422,7 @@ impl REPL {
         let captures = Rc::new(captures);
         let mut values = Vec::new();
         for param in &function_call.parameters {
-            values.push(self.evaluate_expression(&captures, &param)?);
+            values.push(self.evaluate_expression(caller_id, &captures, &param)?);
         }
         self.evaluate_function_definition(&definition, &values, &captures)
     }
@@ -574,30 +579,31 @@ impl REPL {
             return builtin_result.unwrap();
         }
 
+        let function_id = &definition.id;
         if definition.is_not_pattern_matched() {
-            return self.evaluate_expression(&arg_values, &definition.bodies[0].1);
+            return self.evaluate_expression(function_id, &arg_values, &definition.bodies[0].1);
         }
 
         for (pattern, expression) in &definition.bodies {
             let PatternMatchResult { is_match, bindings } =
-                self.pattern_match(&definition.id, pattern, &ordered_arg_values)?;
+                self.pattern_match(function_id, pattern, &ordered_arg_values)?;
             if is_match {
                 if bindings.is_empty() {
-                    return self.evaluate_expression(&arg_values, expression);
+                    return self.evaluate_expression(function_id, &arg_values, expression);
                 }
 
                 let mut new_bindings = arg_values.as_ref().clone();
                 for (k, v) in &bindings {
                     new_bindings.insert(*k, Rc::clone(v));
                 }
-                return self.evaluate_expression(&Rc::new(new_bindings), expression);
+                return self.evaluate_expression(function_id, &Rc::new(new_bindings), expression);
             }
         }
 
         //todo: should be caught at compile time
         Err(format!(
             "Non-exhaustive patterns in function '{}' for values: {}",
-            self.program.var_name(&definition.id),
+            self.program.var_name(function_id),
             ordered_arg_values
                 .iter()
                 .map(|v| v
@@ -610,6 +616,7 @@ impl REPL {
 
     fn evaluate_expression(
         &self,
+        caller_id: &IdentifierId,
         identifier_values: &Rc<IntMap<IdentifierId, RcValue>>,
         expression: &Expression,
     ) -> Result<RcValue, String> {
@@ -617,30 +624,32 @@ impl REPL {
             Expression::TypeConstructor(id, variant, expressions) => {
                 let mut values = Vec::new();
                 for expr in expressions {
-                    values.push(self.evaluate_expression(identifier_values, expr)?);
+                    values.push(self.evaluate_expression(caller_id, identifier_values, expr)?);
                 }
 
                 Ok(Rc::new(Value::Typed(*id, *variant, values)))
             }
             Expression::FunctionCall(function_call) => {
-                self.evaluate_function_call(function_call, identifier_values)
+                self.evaluate_function_call(caller_id, function_call, identifier_values)
             }
             Expression::WithBlock(items, expression) => {
                 let mut bindings = identifier_values.as_ref().clone();
                 for (id, expr) in items {
-                    let result = self.evaluate_expression(&Rc::new(bindings.clone()), expr)?;
+                    let result =
+                        self.evaluate_expression(caller_id, &Rc::new(bindings.clone()), expr)?;
                     bindings.insert(*id, Rc::clone(&result));
                 }
-                return self.evaluate_expression(&Rc::new(bindings), expression);
+                return self.evaluate_expression(caller_id, &Rc::new(bindings), expression);
             }
             Expression::If(condition, true_branch, false_branch) => {
-                let condition = self.evaluate_expression(identifier_values, condition)?;
+                let condition =
+                    self.evaluate_expression(caller_id, identifier_values, condition)?;
                 match condition.as_ref() {
                     Value::Bool(condition) => {
                         if *condition {
-                            self.evaluate_expression(identifier_values, true_branch)
+                            self.evaluate_expression(caller_id, identifier_values, true_branch)
                         } else {
-                            self.evaluate_expression(identifier_values, false_branch)
+                            self.evaluate_expression(caller_id, identifier_values, false_branch)
                         }
                     }
                     _ => return Err(format!("Bug! If condition should be Bool")),
@@ -800,5 +809,29 @@ mod tests {
             )
         );
         assert_eq!(repl.handle_input("test(2.2)"), Err("Argument 0 in function 'test' in caller 'REPL' has type 'Int' ('Int') but 'Float' ('Float') was provided".to_string()));
+    }
+
+    #[test]
+    fn test_inner_bindings_do_not_shadow_self() {
+        let mut repl = REPL::new();
+
+        assert_eq!(
+            repl.handle_input("fn weird_f x:Int = 0 -> 0 _ -> with weird_f = (x:Float s:String)->123 weird_f(0)"),
+            Ok(String::new())
+        );
+        assert_eq!(repl.handle_input("weird_f(0)"), Ok("0".to_string()));
+        assert_eq!(repl.handle_input("weird_f(1)"), Ok("0".to_string()));
+        assert_eq!(repl.handle_input("weird_f(2)"), Ok("0".to_string()));
+    }
+
+    #[test]
+    fn test_inner_bindings_shadow_outer_bindings() {
+        let mut repl = REPL::new();
+
+        assert_eq!(repl.handle_input("fn h -> 0"), Ok(String::new()));
+        assert_eq!(repl.handle_input("with h = (x:Int)->2 h(1)"), Ok("2".to_string()));
+        assert_eq!(repl.handle_input("with h = (x:Int)->2 h()"), Err("Function 'h' in caller 'REPL' expects 1 arguments but 0 were provided".to_string()));
+        assert_eq!(repl.handle_input("with h = (x:Int y:Int)->x h(3)"), Err("Function 'h' in caller 'REPL' expects 2 arguments but 1 were provided".to_string()));
+        assert_eq!(repl.handle_input("with h = (x:Int y:Int)->x h(3, 4)"), Ok("3".to_string()));
     }
 }
