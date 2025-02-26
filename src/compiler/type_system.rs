@@ -327,7 +327,7 @@ pub fn infer_expression_type(
                 Rc::clone(type_variant)
             };
 
-            if expressions.len() > 0 {
+            if !expressions.is_empty() {
                 match type_variant.as_ref() {
                     TypeVariant::Cartesian(variant, items) => {
                         let mut type_parameter_bindings = TypeParameterBindings::new();

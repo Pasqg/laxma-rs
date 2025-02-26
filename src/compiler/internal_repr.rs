@@ -252,7 +252,9 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
             let arguments = &ast.children[1];
             let mut types = Vec::new();
             for child in &arguments.children {
-                types.push(Rc::new(type_repr(child, identifier_id_map)?));
+                if !child.matched.is_empty() && child.matched[0].unwrap_str() != "," {
+                    types.push(Rc::new(type_repr(child, identifier_id_map)?));
+                }
             }
 
             let return_type = Rc::new(type_repr(&ast.children[4], identifier_id_map)?);
@@ -279,7 +281,7 @@ fn destructuring_repr(
     let mut first_component = None;
     let mut components = Vec::new();
     for child in &ast.children {
-        if child.matched.len() > 0 && child.matched[0].unwrap_str() != "," {
+        if !child.matched.is_empty() && child.matched[0].unwrap_str() != "," {
             match child.id {
                 Some(Rules::Identifier) => {
                     let result = child.matched[0].unwrap_str();
@@ -340,8 +342,10 @@ fn arguments_repr(
         }
         Some(Rules::Arguments) => {
             for child in &ast.children {
-                let result = argument_repr(child, identifier_id_map)?;
-                arguments.push(result);
+                if !child.matched.is_empty() && child.matched[0].unwrap_str() != "," {
+                    let result = argument_repr(child, identifier_id_map)?;
+                    arguments.push(result);
+                }
             }
         }
         _ => panic!("Expected None, Argument or Arguments but got {:?}", ast.id),

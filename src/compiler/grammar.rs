@@ -37,7 +37,7 @@ pub enum Rules {
     Program,
 }
 
-const IDENTIFIER_REGEX: &'static str = r"[a-zA-Z?_\+\-\*\/><=\^][a-zA-Z?_\+\-\*\/0-9\^=]*";
+const IDENTIFIER_REGEX: &'static str = r"[a-zA-Z?_\+\-\*\/><=\^\.][a-zA-Z?_\+\-\*\/0-9\^=]*";
 const INTEGER_REGEX: &'static str = r"[\-\+]?\d+";
 const FLOAT_REGEX: &'static str = r"[\-\+]?\d+\.\d+";
 const STRING_REGEX: &'static str = r#"\"[^\"]*\""#;
@@ -45,13 +45,14 @@ const TYPE_PARAMETER_REGEX: &'static str = r"'[a-zA-Z]+";
 const STANDALONE_REGEX: &'static str = r"->|::|:|\||[,\[\]\(\)]";
 
 // Order matters
-pub(super) const LEXER_REGEX: [&'static str; 6] = [
+pub(super) const LEXER_REGEX: [&'static str; 7] = [
     STANDALONE_REGEX,
     FLOAT_REGEX,
     INTEGER_REGEX,
     IDENTIFIER_REGEX,
     STRING_REGEX,
     TYPE_PARAMETER_REGEX,
+    "^[\n\r\t ]",
 ];
 
 fn identifier() -> Combinators<Rules> {
@@ -104,7 +105,7 @@ fn type_name() -> Combinators<Rules> {
             vec![
                 identifier(),
                 slit("["),
-                at_least_one(Some(Rules::Elements), type_name.clone(), Some(slit(","))),
+                at_least_one(Some(Rules::Elements), type_name.clone(), Some(optional(slit(",")))),
                 slit("]"),
             ],
         )
@@ -115,7 +116,7 @@ fn type_name() -> Combinators<Rules> {
             Rules::FunctionType,
             vec![
                 slit("("),
-                many(Some(Rules::Arguments), type_name.clone(), None),
+                many(Some(Rules::Arguments), type_name.clone(), Some(optional(slit(",")))),
                 slit(")"),
                 slit("->"),
                 type_name.clone(),
@@ -216,7 +217,7 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::LambdaExpression,
             vec![
                 slit("("),
-                many(Some(Rules::Arguments), argument(), None),
+                many(Some(Rules::Arguments), argument(), Some(optional(slit(",")))),
                 slit(")"),
                 slit("->"),
                 expression.clone(),
