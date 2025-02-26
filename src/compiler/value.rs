@@ -14,8 +14,10 @@ pub enum Value {
     Float(f32),
     Bool(bool),
     String(Rc<String>),
+    // (definition, captures) effectively a closure (model as such)
     Function(Rc<FunctionDefinition>, Rc<IntMap<IdentifierId, RcValue>>),
     Void,
+    Unknown,
 }
 
 // Like for linked lists, we need to avoid recursive drop().
@@ -62,6 +64,7 @@ impl Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::String(s) => write!(f, "{}", &s.to_string()[1..s.len() - 1]),
             Value::Void => write!(f, "Void"),
+            Value::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -90,6 +93,7 @@ impl Value {
             Value::Bool(x) => Ok(format!("{x}")),
             Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len() - 1])),
             Value::Void => Ok("Void".to_string()),
+            Value::Unknown => Ok("Unknown".to_string()),
         }
     }
 

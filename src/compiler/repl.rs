@@ -5,6 +5,7 @@ use std::time::Instant;
 use nohash_hasher::IntMap;
 
 use crate::compiler::grammar;
+use crate::compiler::identifier_map::{UNKNOWN_ID, VOID_ID};
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::{infer_function_type, verify_type_definition};
 use crate::parser::combinators::ParserCombinator;
@@ -110,9 +111,12 @@ impl REPL {
         let original_error = result.unwrap_err();
         let result = expression_repr(&ast, &mut self.program.identifier_id_map);
         if result.is_ok() {
+            //todo dedup with type system
             let values = to_int_map(HashMap::from([
                 (TRUE_ID, Rc::new(Value::Bool(true))),
                 (FALSE_ID, Rc::new(Value::Bool(false))),
+                (VOID_ID, Rc::new(Value::Void)),
+                (UNKNOWN_ID, Rc::new(Value::Unknown)),
             ]));
             let start = Instant::now();
             let expression = result.unwrap();
@@ -196,7 +200,8 @@ impl REPL {
                                 return Ok(PatternMatchResult::no_match());
                             }
                         }
-                        Value::Void => return Err(format!("Arg is Void")),
+                        Value::Void => return Err(format!("Argument is Void")),
+                        Value::Unknown => return Err(format!("Argument is Unknown")),
                     }
                 }
                 DestructuringComponent::Destructuring(destructuring) => match arg.as_ref() {
@@ -283,6 +288,12 @@ impl REPL {
                             self.program.var_name(function_id)
                         ))
                     }
+                    Value::Unknown => {
+                        return Err(format!(
+                            "Arg is Unknown in function '{}'",
+                            self.program.var_name(function_id)
+                        ))
+                    }
                 },
                 DestructuringComponent::Integer(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {
@@ -302,7 +313,8 @@ impl REPL {
                     Value::Function(_, _) => {
                         return Err(format!("Function cannot be matched to Int"))
                     }
-                    Value::Void => return Err(format!("Arg is Void")),
+                    Value::Void => return Err(format!("Argument is Void")),
+                    Value::Unknown => return Err(format!("Argument is Unknown")),
                 },
                 DestructuringComponent::Float(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {
@@ -323,6 +335,7 @@ impl REPL {
                         return Err(format!("Function cannot be matched to Float"))
                     }
                     Value::Void => return Err(format!("Arg is Void")),
+                    Value::Unknown => return Err(format!("Arg is Unknown")),
                 },
                 DestructuringComponent::String(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {
@@ -343,6 +356,7 @@ impl REPL {
                         return Err(format!("Function cannot be matched to String"))
                     }
                     Value::Void => return Err(format!("Arg is Void")),
+                    Value::Unknown => return Err(format!("Arg is Unknown")),
                 },
             }
         }
@@ -350,159 +364,153 @@ impl REPL {
     }
 
     fn evaluate_function_call(
-        &mut self,
+        &self,
         function_call: &FunctionCall,
         identifier_values: &Rc<IntMap<IdentifierId, RcValue>>,
     ) -> Result<RcValue, String> {
-        match function_call.id {
-            ADD_ID | SUB_ID | MUL_ID | DIV_ID => {
-                if function_call.parameters.len() < 2 {
+        let mut captures = identifier_values.as_ref().clone();
+
+        let definition = {
+            let mut definition = self.program.functions.get(&function_call.id);
+            if definition.is_none() {
+                let function_value = identifier_values.get(&function_call.id);
+                if function_value.is_none() {
                     return Err(format!(
-                        "Function '{}' requires at least 2 parameters but got '{}'",
-                        self.program.var_name(&function_call.id),
-                        function_call.parameters.len()
+                        "Function '{}' is not defined",
+                        self.program.var_name(&function_call.id)
                     ));
                 }
 
-                let mut ints = Vec::new();
-                let mut floats = Vec::new();
-                let mut i = 1;
-                for param in &function_call.parameters {
-                    let result = self.evaluate_expression(identifier_values, param)?;
-                    match result.as_ref() {
-                        Value::Integer(x) => ints.push(*x),
-                        Value::Float(x) => floats.push(*x),
-                        _ => {
-                            return Err(format!(
-                                "Argument {i} of function '{}' is not numeric",
-                                self.program.var_name(&function_call.id)
-                            ))
+                let function_value = function_value.unwrap();
+                match function_value.as_ref() {
+                    Value::Function(function_definition, lambda_captures) => {
+                        definition = Some(function_definition);
+                        for (k, v) in lambda_captures.as_ref() {
+                            captures.insert(*k, Rc::clone(v));
                         }
                     }
-                    i += 1;
-                    if !ints.is_empty() && !floats.is_empty() {
+                    _ => {
                         return Err(format!(
-                            "Arguments for function '{}' have different numeric types",
-                            self.program.var_name(&function_call.id)
+                            "'{}' is not a function: '{}'",
+                            self.program.var_name(&function_call.id),
+                            function_value
+                                .value_to_str(&|id| Rc::clone(self.program.var_name(id)))?,
                         ));
                     }
                 }
-                if !ints.is_empty() {
-                    let values = ints;
-                    match function_call.id {
-                        ADD_ID => Ok(Rc::new(Value::Integer(
-                            values.into_iter().reduce(|acc, x| acc + x).unwrap(),
-                        ))),
-                        SUB_ID => Ok(Rc::new(Value::Integer(
-                            values.into_iter().reduce(|acc, x| acc - x).unwrap(),
-                        ))),
-                        MUL_ID => Ok(Rc::new(Value::Integer(
-                            values.into_iter().reduce(|acc, x| acc * x).unwrap(),
-                        ))),
-                        DIV_ID => Ok(Rc::new(Value::Integer(
-                            values.into_iter().reduce(|acc, x| acc / x).unwrap(),
-                        ))),
-                        _ => panic!("Unhandled arithmetic function {}", function_call.id),
-                    }
-                } else {
-                    let values = floats;
-                    match function_call.id {
-                        ADD_ID => Ok(Rc::new(Value::Float(
-                            values.into_iter().reduce(|acc, x| acc + x).unwrap(),
-                        ))),
-                        SUB_ID => Ok(Rc::new(Value::Float(
-                            values.into_iter().reduce(|acc, x| acc - x).unwrap(),
-                        ))),
-                        MUL_ID => Ok(Rc::new(Value::Float(
-                            values.into_iter().reduce(|acc, x| acc * x).unwrap(),
-                        ))),
-                        DIV_ID => Ok(Rc::new(Value::Float(
-                            values.into_iter().reduce(|acc, x| acc / x).unwrap(),
-                        ))),
-                        _ => panic!("Unhandled arithmetic function {}", function_call.id),
-                    }
-                }
+            }
+            Rc::clone(definition.unwrap())
+        };
+
+        //todo should be static checks
+        let expected_arg_num = definition.arguments.len();
+        let actual_arg_num = function_call.parameters.len();
+        if expected_arg_num != actual_arg_num {
+            return Err(format!(
+                "Function '{}' expects {} arguments, but {} were provided",
+                self.program.var_name(&definition.id),
+                expected_arg_num,
+                actual_arg_num
+            ));
+        }
+
+        let captures = Rc::new(captures);
+        let mut values = Vec::new();
+        for param in &function_call.parameters {
+            values.push(self.evaluate_expression(&captures, &param)?);
+        }
+        self.evaluate_function_definition(&definition, &values, &captures)
+    }
+
+    fn evaluate_math_operator(
+        &self,
+        id: &IdentifierId,
+        ordered_arg_values: &[RcValue],
+    ) -> Result<RcValue, String> {
+        let a = ordered_arg_values[0].as_int();
+        let b = ordered_arg_values[1].as_int();
+        match *id {
+            ADD_ID => Ok(Rc::new(Value::Integer(a + b))),
+            SUB_ID => Ok(Rc::new(Value::Integer(a - b))),
+            MUL_ID => Ok(Rc::new(Value::Integer(a * b))),
+            DIV_ID => Ok(Rc::new(Value::Integer(a / b))),
+            _ => Err(format!(
+                "Unhandled arithmetic function {}",
+                self.program.var_name(id)
+            )),
+        }
+    }
+
+    fn evaluate_boolean_operator(
+        &self,
+        id: &IdentifierId,
+        ordered_arg_values: &[RcValue],
+    ) -> Result<RcValue, String> {
+        let left = ordered_arg_values[0].as_int();
+        let right = ordered_arg_values[1].as_int();
+
+        match *id {
+            GT_ID => Ok(Rc::new(Value::Bool(left > right))),
+            GE_ID => Ok(Rc::new(Value::Bool(left >= right))),
+            LT_ID => Ok(Rc::new(Value::Bool(left < right))),
+            LE_ID => Ok(Rc::new(Value::Bool(left <= right))),
+            EQ_ID => Ok(Rc::new(Value::Bool(left == right))),
+            _ => Err(format!(
+                "Unhandled boolean function {}",
+                self.program.var_name(&id)
+            )),
+        }
+    }
+
+    fn evaluate_while(&self, ordered_arg_values: &[RcValue]) -> Result<RcValue, String> {
+        let condition = &ordered_arg_values[2];
+        let (condition_def, condition_caps) = match condition.as_ref() {
+            Value::Function(def, captures) => (def, captures),
+            _ => {
+                return Err(format!(
+                    "Expected function as condition in while but got '{:?}'",
+                    condition.value_to_str(&|id| Rc::clone(self.program.var_name(id)))
+                ));
+            }
+        };
+
+        let mut acc = Rc::clone(&ordered_arg_values[0]);
+        let update = &ordered_arg_values[1];
+        let (update_def, update_caps) = match update.as_ref() {
+            Value::Function(def, captures) => (def, captures),
+            _ => {
+                return Err(format!(
+                    "Expected function as update in while but got '{:?}'",
+                    update.value_to_str(&|id| Rc::clone(self.program.var_name(id)))
+                ));
+            }
+        };
+
+        while self
+            .evaluate_function_definition(condition_def, &vec![Rc::clone(&acc)], condition_caps)?
+            .as_boolean()
+        {
+            acc = self.evaluate_function_definition(update_def, &vec![acc], update_caps)?;
+        }
+
+        Ok(acc)
+    }
+
+    fn try_evaluate_builtin(
+        &self,
+        id: &IdentifierId,
+        ordered_arg_values: &[RcValue],
+    ) -> Option<Result<RcValue, String>> {
+        match *id {
+            ADD_ID | SUB_ID | MUL_ID | DIV_ID => {
+                Some(self.evaluate_math_operator(id, ordered_arg_values))
             }
             GT_ID | LT_ID | EQ_ID | LE_ID | GE_ID => {
-                if function_call.parameters.len() != 2 {
-                    return Err(format!(
-                        "Function '{}' requires 2 parameters but got '{}'",
-                        self.program.var_name(&function_call.id),
-                        function_call.parameters.len()
-                    ));
-                }
-
-                let left =
-                    self.evaluate_expression(identifier_values, &function_call.parameters[0])?;
-                let right =
-                    self.evaluate_expression(identifier_values, &function_call.parameters[1])?;
-
-                let (left, right) = match (left.as_ref(), right.as_ref()) {
-                    (Value::Integer(x), Value::Integer(y)) => (*x, *y),
-                    (_, _) => {
-                        return Err(format!(
-                            "Arguments of '{}' are not numeric",
-                            self.program.var_name(&function_call.id),
-                        ))
-                    }
-                };
-
-                match function_call.id {
-                    GT_ID => Ok(Rc::new(Value::Bool(left > right))),
-                    GE_ID => Ok(Rc::new(Value::Bool(left >= right))),
-                    LT_ID => Ok(Rc::new(Value::Bool(left < right))),
-                    LE_ID => Ok(Rc::new(Value::Bool(left <= right))),
-                    EQ_ID => Ok(Rc::new(Value::Bool(left == right))),
-                    _ => panic!(
-                        "Unhandled boolean function {}",
-                        self.program.var_name(&function_call.id)
-                    ),
-                }
+                Some(self.evaluate_boolean_operator(id, ordered_arg_values))
             }
-            WHILE_ID => {
-                let condition =
-                    self.evaluate_expression(identifier_values, &function_call.parameters[2])?;
-                let (condition_def, condition_caps) = match condition.as_ref() {
-                    Value::Function(def, captures) => (def, captures),
-                    _ => {
-                        return Err(format!(
-                            "Expected function as condition in while but got '{:?}'",
-                            condition.value_to_str(&|id| Rc::clone(self.program.var_name(id)))
-                        ))
-                    }
-                };
-
-                let mut acc =
-                    self.evaluate_expression(identifier_values, &function_call.parameters[0])?;
-                let update =
-                    self.evaluate_expression(identifier_values, &function_call.parameters[1])?;
-                let (update_def, update_caps) = match update.as_ref() {
-                    Value::Function(def, captures) => (def, captures),
-                    _ => {
-                        return Err(format!(
-                            "Expected function as update in while but got '{:?}'",
-                            update.value_to_str(&|id| Rc::clone(self.program.var_name(id)))
-                        ))
-                    }
-                };
-
-                while self
-                    .evaluate_function_definition(
-                        condition_def,
-                        &vec![Rc::clone(&acc)],
-                        condition_caps,
-                    )?
-                    .as_boolean()
-                {
-                    acc = self.evaluate_function_definition(update_def, &vec![acc], update_caps)?;
-                }
-
-                Ok(acc)
-            }
+            WHILE_ID => Some(self.evaluate_while(ordered_arg_values)),
             RANGE_ID => {
-                let n = self
-                    .evaluate_expression(identifier_values, &function_call.parameters[0])?
-                    .as_int();
+                let n = ordered_arg_values[0].as_int();
                 let mut result = Rc::new(Value::Typed(LIST_ID, EMPTY_LIST_ID, vec![]));
 
                 for i in 0..n {
@@ -513,21 +521,20 @@ impl REPL {
                     ));
                 }
 
-                Ok(result)
+                Some(Ok(result))
             }
             PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
-                for param in &function_call.parameters {
-                    let result = self.evaluate_expression(identifier_values, param)?;
-                    match result.value_to_str(&|id| Rc::clone(self.program.var_name(id))) {
+                for param in ordered_arg_values {
+                    match param.value_to_str(&|id| Rc::clone(self.program.var_name(id))) {
                         Ok(val) => values.push(val),
-                        Err(err) => return Err(format!("Cannot print argument {i}: {err}")),
+                        Err(err) => return Some(Err(format!("Cannot print argument {i}: {err}"))),
                     }
                     i += 1;
                 }
 
-                match function_call.id {
+                let result = match *id {
                     PRINT_ID => {
                         print!("{}", values.join(" "));
                         Ok(Rc::new(Value::Void))
@@ -538,64 +545,15 @@ impl REPL {
                     }
                     ERROR_ID => Err(format!("{}", values.join(" "))),
                     _ => panic!("Shouldn't happen"),
-                }
-            }
-            _ => {
-                let mut captures = identifier_values.as_ref().clone();
-
-                let definition = {
-                    let mut definition = self.program.functions.get(&function_call.id);
-                    if definition.is_none() {
-                        let function_value = identifier_values.get(&function_call.id);
-                        if function_value.is_none() {
-                            return Err(format!(
-                                "Function '{}' is not defined",
-                                self.program.var_name(&function_call.id)
-                            ));
-                        }
-
-                        match function_value.unwrap().as_ref() {
-                            Value::Function(function_definition, lambda_captures) => {
-                                definition = Some(function_definition);
-                                for (k, v) in lambda_captures.as_ref() {
-                                    captures.insert(*k, Rc::clone(v));
-                                }
-                            }
-                            _ => {
-                                return Err(format!(
-                                    "'{}' is not a function",
-                                    self.program.var_name(&function_call.id)
-                                ));
-                            }
-                        }
-                    }
-                    Rc::clone(definition.unwrap())
                 };
-
-                //todo should be static checks
-                let expected_arg_num = definition.arguments.len();
-                let actual_arg_num = function_call.parameters.len();
-                if expected_arg_num != actual_arg_num {
-                    return Err(format!(
-                        "Function '{}' expects {} arguments, but {} were provided",
-                        self.program.var_name(&definition.id),
-                        expected_arg_num,
-                        actual_arg_num
-                    ));
-                }
-
-                let captures = Rc::new(captures);
-                let mut values = Vec::new();
-                for param in &function_call.parameters {
-                    values.push(self.evaluate_expression(&captures, &param)?);
-                }
-                self.evaluate_function_definition(&definition, &values, &captures)
+                Some(result)
             }
+            _ => None,
         }
     }
 
     fn evaluate_function_definition(
-        &mut self,
+        &self,
         definition: &Rc<FunctionDefinition>,
         parameter_values: &Vec<RcValue>,
         captures: &Rc<IntMap<IdentifierId, RcValue>>,
@@ -610,6 +568,11 @@ impl REPL {
             ordered_arg_values.push(value);
         }
         let arg_values = Rc::new(arg_values);
+
+        let builtin_result = self.try_evaluate_builtin(&definition.id, &ordered_arg_values);
+        if builtin_result.is_some() {
+            return builtin_result.unwrap();
+        }
 
         if definition.is_not_pattern_matched() {
             return self.evaluate_expression(&arg_values, &definition.bodies[0].1);
@@ -646,7 +609,7 @@ impl REPL {
     }
 
     fn evaluate_expression(
-        &mut self,
+        &self,
         identifier_values: &Rc<IntMap<IdentifierId, RcValue>>,
         expression: &Expression,
     ) -> Result<RcValue, String> {

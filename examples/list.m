@@ -20,7 +20,7 @@ fn empty? x:List['T] =
     List _ _ -> false
 
 fn concat xs:List['T] ys:List['T] =
-    _ , Empty -> xs
+    _, Empty -> xs
     Empty , _ -> ys
     List x xs , _ -> cons(x concat(xs ys))
 
@@ -42,7 +42,7 @@ fn length x:List['T] =
 
 fn list_of n:Int x:'T =
     1 , _ -> list(x)
-    _ , _ -> cons(x list_of(-(n 1) x))
+    _, _ -> cons(x list_of(-(n 1) x))
 
 fn recur_while init:'T update:('T)->'T condition:('T)->Bool ->
     if condition(init)
@@ -68,28 +68,38 @@ fn while_range n:Int =
     0 -> empty()
     _ -> with k = --(n) while(
             list(0)
-            (xs:List[Int]) -> cons(++(first(xs)) xs)
-            (xs:List[Int]) -> <(first(xs) k)
+            (xs: List[Int]) -> cons(++(first(xs)), xs)
+            (xs: List[Int]) -> <(first(xs), k)
         )
 
 fn filter pred :('T)->Bool xs:List['T] =
-    _ , Empty -> empty()
-    _ , List x xs ->
+    _, Empty -> empty()
+    _, List x xs ->
         if pred(x)
             cons(x filter(pred xs))
             filter(pred xs)
 
 fn map f:('P)->'Q xs:List['P] =
-    _ , Empty -> empty()
-    _ , List x xs -> cons(f(x) map(f xs))
+    _, Empty -> empty()
+    _, List x xs -> cons(f(x) map(f xs))
+
+fn foldl f:('Acc 'T)->'Acc z:'Acc xs:List['T] =
+    _, _, Empty -> z
+    _, _, List x xs -> foldl(f f(z x) xs)
+
+fn foldr f:('Acc 'T)->'Acc z:'Acc xs:List['T] =
+    _, _, Empty -> z
+    _, _, List x xs -> f(x foldr(f z xs))
+
+fn reverse xs:List['T] -> foldl(flip(cons) empty() xs)
 
 fn reduce
         f:('Result 'T) -> 'Result
         init: 'Result
         xs: List['T]
     =
-    _ , _ , Empty -> init
-    _ , _ , List x xs -> f(reduce(f init xs) x)
+    _, _, Empty -> init
+    _, _, List x xs -> f(reduce(f init xs) x)
 
 fn quicksort xs:List[Int] =
     Empty -> empty()
@@ -103,5 +113,5 @@ fn quicksort xs:List[Int] =
                 concat(
                     list(pivot)
                     quicksort(right)
-               )
-           )
+                )
+            )

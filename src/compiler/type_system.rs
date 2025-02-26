@@ -7,15 +7,10 @@ use nohash_hasher::IntMap;
 
 use super::{
     identifier_map::{
-        IdentifierId, ADD_ID, BINARY_INT_BOOL_FUNC, BINARY_INT_INT_FUNC, BOOL_ID, DIV_ID, EQ_ID,
-        ERROR_ID, FALSE_ID, FLOAT_ID, GE_ID, GT_ID, INT_ID, LE_ID, LIST_ID, LT_ID, MUL_ID,
-        PRINTLN_ID, PRINT_ID, RANGE_ID, RANGE_SIGNATURE, STRING_ID, SUB_ID, TRUE_ID, T_BOOL_FUNC,
-        T_TYPE_PARAM_ID, T_T_FUNC, T_UNKNOWN_FUNC, T_VOID_FUNC, VOID_ID, WHILE_FUNC_SIGNATURE,
-        WHILE_ID, WILDCARD_ID,
+        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNKNOWN_ID, VOID_ID, WILDCARD_ID
     },
     internal_repr::{
-        DestructuringComponent, Expression, FunctionDefinition, Program, Type, TypeDefinition,
-        TypeVariant,
+        DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type, TypeDefinition, TypeVariant
     },
     utils::to_int_map,
 };
@@ -23,100 +18,27 @@ use super::{
 #[derive(Debug, Clone)]
 pub(super) struct TypeInfo {
     pub(super) primitive_types: HashSet<IdentifierId>,
-    pub(super) user_types: IntMap<IdentifierId, Rc<Type>>,
+    pub(super) user_types: IntMap<IdentifierId, RcType>,
     //todo: function_types and constant_types could be part of the same map
-    pub(super) function_types: IntMap<IdentifierId, Rc<Type>>,
-    pub(super) constant_types: Rc<IntMap<IdentifierId, Rc<Type>>>,
+    pub(super) function_types: IntMap<IdentifierId, RcType>,
+    pub(super) constant_types: Rc<IntMap<IdentifierId, RcType>>,
 }
 
 impl TypeInfo {
     pub fn new() -> Self {
         let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID, FLOAT_ID]);
         let bool_type = Rc::new(Type::SimpleType(BOOL_ID));
-        let int_type = Rc::new(Type::SimpleType(INT_ID));
         let void_type = Rc::new(Type::SimpleType(VOID_ID));
-        let t_type = Rc::new(Type::TypeParameter(T_TYPE_PARAM_ID));
         let unknown_type = Rc::new(Type::Unknown);
-        let int_list_type = Rc::new(Type::ParametrizedType(LIST_ID, vec![Rc::clone(&int_type)]));
-
-        let binary_int_type = Rc::new(Type::FunctionType(
-            BINARY_INT_INT_FUNC,
-            vec![Rc::clone(&int_type), Rc::clone(&int_type)],
-            Rc::clone(&int_type),
-            None,
-        ));
-        let int_comparison_type = Rc::new(Type::FunctionType(
-            BINARY_INT_BOOL_FUNC,
-            vec![Rc::clone(&int_type), Rc::clone(&int_type)],
-            Rc::clone(&bool_type),
-            None,
-        ));
-        let t_void_type = Rc::new(Type::FunctionType(
-            T_VOID_FUNC,
-            vec![Rc::clone(&t_type)],
-            Rc::clone(&void_type),
-            None,
-        ));
-        let t_bool_type = Rc::new(Type::FunctionType(
-            T_BOOL_FUNC,
-            vec![Rc::clone(&t_type)],
-            Rc::clone(&bool_type),
-            None,
-        ));
-        let t_unknown_type = Rc::new(Type::FunctionType(
-            T_UNKNOWN_FUNC,
-            vec![Rc::clone(&t_type)],
-            Rc::clone(&unknown_type),
-            None,
-        ));
-        let t_t_type = Rc::new(Type::FunctionType(
-            T_T_FUNC,
-            vec![Rc::clone(&t_type)],
-            Rc::clone(&t_type),
-            None,
-        ));
         Self {
             primitive_types,
             user_types: IntMap::default(),
-            function_types: to_int_map(HashMap::from([
-                (PRINT_ID, Rc::clone(&t_void_type)),
-                (PRINTLN_ID, Rc::clone(&t_void_type)),
-                (ERROR_ID, Rc::clone(&t_unknown_type)),
-                (
-                    WHILE_ID,
-                    Rc::new(Type::FunctionType(
-                        WHILE_FUNC_SIGNATURE,
-                        vec![
-                            Rc::clone(&t_type),
-                            Rc::clone(&t_t_type),
-                            Rc::clone(&t_bool_type),
-                        ],
-                        Rc::clone(&t_type),
-                        None,
-                    )),
-                ),
-                (
-                    RANGE_ID,
-                    Rc::new(Type::FunctionType(
-                        RANGE_SIGNATURE,
-                        vec![Rc::clone(&int_type)],
-                        Rc::clone(&int_list_type),
-                        None,
-                    )),
-                ),
-                (ADD_ID, Rc::clone(&binary_int_type)),
-                (SUB_ID, Rc::clone(&binary_int_type)),
-                (MUL_ID, Rc::clone(&binary_int_type)),
-                (DIV_ID, Rc::clone(&binary_int_type)),
-                (GT_ID, Rc::clone(&int_comparison_type)),
-                (GE_ID, Rc::clone(&int_comparison_type)),
-                (EQ_ID, Rc::clone(&bool_type)),
-                (LT_ID, Rc::clone(&int_comparison_type)),
-                (LE_ID, Rc::clone(&int_comparison_type)),
-            ])),
+            function_types: IntMap::default(),
             constant_types: Rc::new(to_int_map(HashMap::from([
                 (TRUE_ID, Rc::clone(&bool_type)),
                 (FALSE_ID, Rc::clone(&bool_type)),
+                (VOID_ID, Rc::clone(&void_type)),
+                (UNKNOWN_ID, Rc::clone(&unknown_type)),
             ]))),
         }
     }
@@ -133,7 +55,7 @@ impl TypeInfo {
 
 #[derive(Debug)]
 struct TypeParameterBindings {
-    bindings: IntMap<IdentifierId, Rc<Type>>,
+    bindings: IntMap<IdentifierId, RcType>,
 }
 
 impl TypeParameterBindings {
@@ -143,7 +65,7 @@ impl TypeParameterBindings {
         }
     }
 
-    fn concretize(&self, _type: &Rc<Type>) -> Rc<Type> {
+    fn concretize(&self, _type: &RcType) -> RcType {
         match _type.as_ref() {
             Type::FunctionType(id, inputs, outputs, captures) => Rc::new(Type::FunctionType(
                 *id,
@@ -166,7 +88,7 @@ impl TypeParameterBindings {
         }
     }
 
-    fn are_compatible(&mut self, first: &Rc<Type>, second: &Rc<Type>) -> bool {
+    fn are_compatible(&mut self, first: &RcType, second: &RcType) -> bool {
         //todo: this concretization should only work one way! List['T] as argument for List[Int] is not valid
 
         match (first.as_ref(), second.as_ref()) {
@@ -234,16 +156,49 @@ impl TypeParameterBindings {
     }
 }
 
+fn get_identifier_type(program: &mut Program, type_info: &TypeInfo, identifier_types: &Rc<IntMap<IdentifierId, RcType>>, caller_id: &IdentifierId, id: &IdentifierId) -> Result<RcType, String> {
+    let function_type = identifier_types.get(id);
+    if function_type.is_some() {
+        return Ok(Rc::clone(function_type.unwrap()));
+    }
+
+    let function_definition = program.functions.get(id);
+    if function_definition.is_some() {
+        let function_definition = Rc::clone(&function_definition.unwrap());
+        let function_type = infer_function_type(
+            program,
+            type_info,
+            &function_definition,
+            Some(Rc::clone(identifier_types)),
+        )?;
+        return Ok(function_type);
+    }
+
+    let builtin = type_info.function_types.get(id);
+    if builtin.is_some() {
+        return Ok(Rc::clone(builtin.unwrap()));
+    }
+
+    Err(format!("Undefined identifier '{}' in function '{}', known '{:?}'", program.var_name(id), program.var_name(caller_id), 
+    identifier_types
+        .iter()
+        .map(|(k, v)| (
+            program.var_name(k),
+            v.full_repr(&program.identifier_id_map)
+        ))
+        .collect::<Vec<(&Rc<String>, Rc<String>)>>()))
+}
+
 fn concretize_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &Rc<IntMap<IdentifierId, Rc<Type>>>,
+    identifier_types: &Rc<IntMap<IdentifierId, RcType>>,
     caller_id: &IdentifierId,
     function_id: &IdentifierId,
-    function_type: &Rc<Type>,
-    arguments: &Vec<Rc<Type>>,
+    function_type: &RcType,
+    arguments: &Vec<RcType>,
     parameters: &Vec<Expression>,
-) -> Result<Rc<Type>, String> {
+) -> Result<RcType, String> {
     let mut type_parameters_bindings = TypeParameterBindings::new();
     if parameters.len() != arguments.len() {
         return Err(format!(
@@ -296,7 +251,10 @@ pub fn verify_type_definition(
             TypeVariant::Constant(_) => {}
             TypeVariant::Cartesian(_, types) => {
                 for t in types {
-                    if t.id() != type_id && !type_info.type_exists(&t.id()) && !type_params.contains(&t.id()) {
+                    if t.id() != type_id
+                        && !type_info.type_exists(&t.id())
+                        && !type_params.contains(&t.id())
+                    {
                         return Err(format!(
                             "Undefined type '{}' for {}::{}",
                             program.var_name(&t.id()),
@@ -315,10 +273,10 @@ pub fn verify_type_definition(
 pub fn infer_expression_type(
     program: &mut Program,
     type_info: &TypeInfo,
-    identifier_types: &Rc<IntMap<IdentifierId, Rc<Type>>>,
+    identifier_types: &Rc<IntMap<IdentifierId, RcType>>,
     current_function_id: &IdentifierId,
     expression: &Expression,
-) -> Result<Rc<Type>, String> {
+) -> Result<RcType, String> {
     match expression {
         Expression::TypeConstructor(type_id, variant, expressions) => {
             let type_variant = {
@@ -445,50 +403,20 @@ pub fn infer_expression_type(
             } else if *current_function_id == function_call.id {
                 Ok(Rc::new(Type::Unknown))
             } else {
-                let id_type = identifier_types.get(&function_call.id);
-                if id_type.is_some() {
-                    match id_type.unwrap().as_ref() {
-                        Type::FunctionType(_, _, return_type, _) => {
-                            return Ok(Rc::clone(return_type));
-                        }
-                        _ => {
-                            return Err(format!(
-                                "'{}' with type '{} is not callable",
-                                program.var_name(&function_call.id),
-                                program.var_name(&id_type.unwrap().id())
-                            ));
-                        }
+                let function_type = get_identifier_type(program, type_info, identifier_types, current_function_id, &function_call.id)?;
+
+                match function_type.as_ref() {
+                    Type::FunctionType(_, _, return_type, _) => {
+                        return Ok(Rc::clone(return_type));
+                    }
+                    _ => {
+                        return Err(format!(
+                            "'{}' with type '{} is not callable",
+                            program.var_name(&function_call.id),
+                            program.var_name(&function_type.id())
+                        ));
                     }
                 }
-
-                let function_definition = program.functions.get(&function_call.id);
-                if function_definition.is_some() {
-                    let function_definition = Rc::clone(function_definition.unwrap());
-                    let function_type = infer_function_type(
-                        program,
-                        type_info,
-                        &Rc::clone(&function_definition),
-                        Some(Rc::clone(identifier_types)),
-                    )?;
-
-                    return match function_type.as_ref() {
-                        Type::FunctionType(_, _, return_type, _) => Ok(Rc::clone(&return_type)),
-                        _ => Err(format!(
-                            "Expected FunctionType but got '{}'",
-                            program.var_name(&function_type.id())
-                        )),
-                    };
-                }
-
-                let builtin = type_info.function_types.get(&function_call.id);
-                if builtin.is_some() {
-                    return Ok(builtin.unwrap().as_return_type());
-                }
-
-                Err(format!(
-                    "Function '{}' was not defined",
-                    program.var_name(&function_call.id)
-                ))
             }
         }
         Expression::WithBlock(items, expression) => {
@@ -570,31 +498,8 @@ pub fn infer_expression_type(
 
             Ok(true_type)
         }
-        Expression::Identifier(id) => {
-            let var_type = identifier_types.get(id);
-            if var_type.is_some() {
-                return Ok(var_type.unwrap().to_owned());
-            }
-
-            let function_def = program.functions.get(id);
-            if function_def.is_none() {
-                return Err(format!(
-                    "Undefined identifier '{}' in function '{}'. Known {:?}",
-                    program.var_name(id),
-                    program.var_name(current_function_id),
-                    identifier_types
-                        .iter()
-                        .map(|(k, v)| (
-                            program.var_name(k),
-                            v.full_repr(&program.identifier_id_map)
-                        ))
-                        .collect::<Vec<(&Rc<String>, Rc<String>)>>(),
-                ));
-            }
-            let function_def = Rc::clone(&function_def.unwrap());
-
-            infer_function_type(program, type_info, &function_def, None)
-        }
+        Expression::Identifier(id) =>
+            get_identifier_type(program, type_info, identifier_types, current_function_id, id),
         Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
         Expression::String(_) => Ok(Rc::new(Type::SimpleType(STRING_ID))),
         Expression::Float(_) => Ok(Rc::new(Type::SimpleType(FLOAT_ID))),
@@ -611,8 +516,8 @@ pub fn infer_function_type(
     program: &mut Program,
     type_info: &TypeInfo,
     current_function: &FunctionDefinition,
-    captures: Option<Rc<IntMap<IdentifierId, Rc<Type>>>>,
-) -> Result<Rc<Type>, String> {
+    captures: Option<Rc<IntMap<IdentifierId, RcType>>>,
+) -> Result<RcType, String> {
     let mut arg_types = type_info.constant_types.as_ref().clone();
     if captures.is_some() {
         for (k, v) in captures.as_ref().unwrap().as_ref() {

@@ -1,8 +1,5 @@
 use core::panic;
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::{collections::HashSet, rc::Rc};
 
 use nohash_hasher::IntMap;
 

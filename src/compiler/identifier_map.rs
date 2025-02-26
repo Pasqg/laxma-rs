@@ -23,23 +23,14 @@ pub(super) const TRUE_ID: IdentifierId = 14;
 pub(super) const FALSE_ID: IdentifierId = 15;
 pub(super) const WILDCARD_ID: IdentifierId = 16;
 pub(super) const UNKNOWN_ID: IdentifierId = 17;
-pub(super) const BINARY_INT_INT_FUNC: IdentifierId = 18;
-pub(super) const BINARY_INT_BOOL_FUNC: IdentifierId = 19;
-pub(super) const T_TYPE_PARAM_ID: IdentifierId = 20;
-pub(super) const T_VOID_FUNC: IdentifierId = 21;
-pub(super) const FLOAT_ID: IdentifierId = 22;
-pub(super) const ERROR_ID: IdentifierId = 23;
-pub(super) const REPL_ID: IdentifierId = 24;
-pub(super) const PRINTLN_ID: IdentifierId = 25;
-pub(super) const WHILE_ID: IdentifierId = 26;
-pub(super) const WHILE_FUNC_SIGNATURE: IdentifierId = 27;
-pub(super) const T_BOOL_FUNC: IdentifierId = 28;
-pub(super) const T_UNKNOWN_FUNC: IdentifierId = 29;
-pub(super) const T_T_FUNC: IdentifierId = 30;
-pub(super) const RANGE_SIGNATURE: IdentifierId = 31;
-pub(super) const RANGE_ID: IdentifierId = 32;
-pub(super) const LIST_ID: IdentifierId = 33;
-pub(super) const EMPTY_LIST_ID: IdentifierId = 34;
+pub(super) const FLOAT_ID: IdentifierId = 18;
+pub(super) const ERROR_ID: IdentifierId = 19;
+pub(super) const REPL_ID: IdentifierId = 20;
+pub(super) const PRINTLN_ID: IdentifierId = 21;
+pub(super) const WHILE_ID: IdentifierId = 22;
+pub(super) const RANGE_ID: IdentifierId = 23;
+pub(super) const LIST_ID: IdentifierId = 24;
+pub(super) const EMPTY_LIST_ID: IdentifierId = 25;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -74,21 +65,12 @@ impl IdentifierIdMap {
             (Rc::new("Bool".to_string()), BOOL_ID),
             (Rc::new("Void".to_string()), VOID_ID),
             (Rc::new("Unknown".to_string()), UNKNOWN_ID),
-            (Rc::new("'T".to_string()), T_TYPE_PARAM_ID),
-            (Rc::new("List".to_string()), LIST_ID),
-            (Rc::new("Empty".to_string()), EMPTY_LIST_ID),
             (Rc::new("true".to_string()), TRUE_ID),
             (Rc::new("false".to_string()), FALSE_ID),
+            (Rc::new("List".to_string()), LIST_ID),
+            (Rc::new("Empty".to_string()), EMPTY_LIST_ID),
 
             (Rc::new("_".to_string()), WILDCARD_ID),
-            (Rc::new("(Int, Int) -> Bool".to_string()), BINARY_INT_BOOL_FUNC),
-            (Rc::new("(Int, Int) -> Int".to_string()), BINARY_INT_INT_FUNC),
-            (Rc::new("('T) -> Void".to_string()), T_VOID_FUNC),
-            (Rc::new("('T) -> Bool".to_string()), T_BOOL_FUNC),
-            (Rc::new("('T) -> Unknown".to_string()), T_UNKNOWN_FUNC),
-            (Rc::new("('T) -> 'T".to_string()), T_T_FUNC),
-            (Rc::new("('T, ( 'T ) -> 'T, ( 'T ) -> Bool) -> 'T".to_string()), WHILE_FUNC_SIGNATURE),
-            (Rc::new("(Int) -> List[Int]".to_string()), RANGE_SIGNATURE),
         ]);
 
         let mut identifier_map = IntMap::default();
