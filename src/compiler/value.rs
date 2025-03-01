@@ -97,6 +97,13 @@ impl Value {
         }
     }
 
+    pub(super) fn as_function(&self) -> (&Rc<FunctionDefinition>, &Rc<IntMap<IdentifierId, RcValue>>) {
+        match self {
+            Value::Function(definition, captures) => (definition, captures),
+            _ => panic!("Not a boolean"),
+        }
+    }
+
     pub(super) fn as_boolean(&self) -> bool {
         match self {
             Value::Bool(b) => *b,

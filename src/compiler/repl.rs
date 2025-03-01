@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
+use std::vec;
 
 use nohash_hasher::IntMap;
 
@@ -11,9 +12,9 @@ use crate::compiler::type_system::{infer_function_type, verify_type_definition};
 use crate::parser::combinators::ParserCombinator;
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, FALSE_ID, GE_ID, GT_ID, LE_ID,
-    LIST_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, SUB_ID, TRUE_ID, WHILE_ID,
-    WILDCARD_ID,
+    IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, FALSE_ID, FOLDL_ID, GE_ID, GT_ID,
+    LE_ID, LIST_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, SUB_ID, TRUE_ID,
+    WHILE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -501,6 +502,32 @@ impl REPL {
         Ok(acc)
     }
 
+    fn evaluate_foldl(&self, ordered_arg_values: &[RcValue]) -> Result<RcValue, String> {
+        let (f, captures) = ordered_arg_values[0].as_function();
+        let mut z = Rc::clone(&ordered_arg_values[1]);
+        let mut xs = Rc::clone(&ordered_arg_values[2]);
+
+        let empty_list = Rc::new(Value::Typed(LIST_ID, EMPTY_LIST_ID, vec![]));
+        while xs != empty_list {
+            let (new_z, new_xs) = match xs.as_ref() {
+                Value::Typed(_, _, values) => {
+                    let x = Rc::clone(&values[0]);
+                    let xs = Rc::clone(&values[1]);
+                    (
+                        self.evaluate_function_definition(f, &vec![z, x], captures)?,
+                        xs,
+                    )
+                }
+                _ => {
+                    return Err(format!("Expected List in foldl but got '{:?}'", xs));
+                }
+            };
+            z = new_z;
+            xs = new_xs;
+        }
+        Ok(z)
+    }
+
     fn try_evaluate_builtin(
         &self,
         id: &IdentifierId,
@@ -514,6 +541,7 @@ impl REPL {
                 Some(self.evaluate_boolean_operator(id, ordered_arg_values))
             }
             WHILE_ID => Some(self.evaluate_while(ordered_arg_values)),
+            FOLDL_ID => Some(self.evaluate_foldl(ordered_arg_values)),
             RANGE_ID => {
                 let n = ordered_arg_values[0].as_int();
                 let mut result = Rc::new(Value::Typed(LIST_ID, EMPTY_LIST_ID, vec![]));

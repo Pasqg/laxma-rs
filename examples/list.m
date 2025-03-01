@@ -1,10 +1,3 @@
-fn -- x:Int -> -(x 1)
-fn ++ x: Int -> +(x 1)
-
-type List['T] -> Empty | List 'T List ['T]
-
-type Option['T] -> None | Some 'T
-
 type Pair['P, 'Q] -> Pair 'P 'Q
 
 fn pair p:'P q:'Q -> Pair::Pair(p q)
@@ -82,14 +75,6 @@ fn filter pred :('T)->Bool xs:List['T] =
 fn map f:('P)->'Q xs:List['P] =
     _, Empty -> empty()
     _, List x xs -> cons(f(x) map(f xs))
-
-fn foldl f:('Acc 'T)->'Acc z:'Acc xs:List['T] =
-    _, _, Empty -> z
-    _, _, List x xs -> foldl(f f(z x) xs)
-
-fn foldr f:('Acc 'T)->'Acc z:'Acc xs:List['T] =
-    _, _, Empty -> z
-    _, _, List x xs -> f(x foldr(f z xs))
 
 fn reverse xs:List['T] -> foldl(flip(cons) empty() xs)
 

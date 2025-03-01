@@ -31,6 +31,7 @@ pub(super) const WHILE_ID: IdentifierId = 22;
 pub(super) const RANGE_ID: IdentifierId = 23;
 pub(super) const LIST_ID: IdentifierId = 24;
 pub(super) const EMPTY_LIST_ID: IdentifierId = 25;
+pub(super) const FOLDL_ID: IdentifierId = 26;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -58,6 +59,7 @@ impl IdentifierIdMap {
             (Rc::new("error".to_string()), ERROR_ID),
             (Rc::new("while".to_string()), WHILE_ID),
             (Rc::new("range".to_string()), RANGE_ID),
+            (Rc::new("foldl".to_string()), FOLDL_ID),
 
             (Rc::new("Int".to_string()), INT_ID),
             (Rc::new("Float".to_string()), FLOAT_ID),
