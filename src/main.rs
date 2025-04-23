@@ -2,12 +2,34 @@ use std::io::{Read, Write};
 use std::fs::{metadata, read_dir};
 use std::time::Instant;
 
+use compiler::lexer::Lexer;
 use compiler::repl::REPL;
 
 mod compiler;
 mod parser;
 mod recur;
 mod utils;
+
+const LOAD_COMMAND: &'static str = "/load";
+
+fn execute_input(repl: &mut REPL, input: &str) {
+    let mut tokens = Lexer::token_stream(input);
+    while tokens.not_done() && &tokens.peek().unwrap_str() == LOAD_COMMAND {
+        let (_, remaining) = tokens.advance();
+        if remaining.not_done() {
+            let (file_name, remaining) = remaining.advance();
+            load_file(repl, format!("{}.m", &file_name.unwrap_str()).as_str());
+            tokens = remaining;
+        } else {
+            tokens = remaining;
+        }
+    }
+
+    let result = repl.handle_tokens(&tokens);
+    if result.is_err() {
+        println!("ERROR: {:?}", result.unwrap_err());
+    }
+}
 
 fn load_file(repl: &mut REPL, file_name: &str) {
     let file = std::fs::File::open(file_name);
@@ -24,7 +46,7 @@ fn load_file(repl: &mut REPL, file_name: &str) {
             if result.is_err() {
                 println!("ERROR for '{}': {}", file_name, result.unwrap_err());
             } else {
-                repl.handle_input(&content);
+                execute_input(repl, &content);
             }
         }
     }
@@ -45,19 +67,9 @@ fn main() {
         if input == "/quit" || input == "/exit" {
             return;
         }
-        if !input.starts_with("/load ") {
-            let start = Instant::now();
-            repl.handle_input(input);
-            println!("Done in {}ms", start.elapsed().as_millis());
-            continue;
-        }
 
-        let files = input.split(&[' ', '\t', '\n']);
-        for file_name in files.skip(1) {
-            let file_name = file_name.trim();
-            if !file_name.is_empty() {
-                load_file(&mut repl, file_name);
-            }
-        }
+        let start = Instant::now();
+        execute_input(&mut repl, input);
+        println!("Done in {}ms", start.elapsed().as_millis());
     }
 }

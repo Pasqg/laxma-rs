@@ -42,6 +42,10 @@ impl TokenStream {
         self.start < self.tokens.len()
     }
 
+    pub fn peek(&self) -> &Token {
+        &self.tokens[self.start]
+    }
+
     pub fn advance(&self) -> (Token, Self) {
         (
             self.tokens[self.start].clone(),

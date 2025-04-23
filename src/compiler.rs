@@ -1,7 +1,7 @@
 mod grammar;
 mod identifier_map;
 mod internal_repr;
-mod lexer;
+pub mod lexer;
 mod type_system;
 mod utils;
 

@@ -10,6 +10,7 @@ use crate::compiler::identifier_map::{UNKNOWN_ID, VOID_ID};
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::{infer_function_type, verify_type_definition};
 use crate::parser::combinators::ParserCombinator;
+use crate::parser::token_stream::TokenStream;
 
 use super::identifier_map::{
     IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, FALSE_ID, FOLDL_ID, GE_ID, GT_ID,
@@ -62,11 +63,14 @@ impl REPL {
 
     pub fn handle_input(&mut self, input: &str) -> Result<String, String> {
         let tokens = Lexer::token_stream(input);
+        self.handle_tokens(&tokens)
+    }
 
+    pub fn handle_tokens(&mut self, tokens: &TokenStream) -> Result<String, String> {
         //todo: parse should return Result<ParserResult>
-        let mut result = grammar::program_parser().parse(&tokens);
+        let mut result = grammar::program_parser().parse(tokens);
         if !result.result || result.remaining.not_done() {
-            result = grammar::expression_parser().parse(&tokens);
+            result = grammar::expression_parser().parse(tokens);
         }
 
         if !result.result || result.remaining.not_done() {

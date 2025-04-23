@@ -2,10 +2,10 @@ use regex::Regex;
 
 use crate::{compiler::grammar::LEXER_REGEX, parser::token_stream::TokenStream};
 
-pub(super) struct Lexer;
+pub struct Lexer;
 
 impl Lexer {
-    pub(super) fn token_stream(input: &str) -> TokenStream {
+    pub fn token_stream(input: &str) -> TokenStream {
         let pattern = LEXER_REGEX.join("|");
         let re = Regex::new(&pattern).unwrap();
 
