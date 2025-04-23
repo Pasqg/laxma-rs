@@ -42,17 +42,6 @@ fn recur_while init:'T update:('T)->'T condition:('T)->Bool ->
         recur_while(update(init) update condition)
         init
 
-fn for
-    n: Int
-    init: 'T
-    f: ('T) -> 'T
-    -> with result = while(
-            pair(0 init)
-            (x:Pair[Int,'T]) -> pair(++(pair_first(x)) f(pair_second(x)))
-           (x:Pair[Int , 'T]) -> <(pair_first(x) n)
-        )
-        pair_second(result)
-
 fn recursive_range n:Int = 
     0 -> empty()
     _ -> cons(n recursive_range(--(n)))

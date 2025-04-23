@@ -224,10 +224,35 @@ Lambdas capture the outside environment in the same way as inner expression get 
 fn quick_sort x : IntList =
     Empty -> empty ( )
     List pivot xs ->
-        //  here pivot is captured in the lambdas
+        // pivot is captured in the lambdas
         with smaller = ( x : Int ) -> < ( x pivot )
             bigger = ( x : Int ) -> >= ( x pivot )
             left = filter ( smaller xs )
             right = filter ( bigger xs )
             concat ( quick_sort ( left ) concat ( list ( pivot ) quick_sort ( right ) ) )
 ```
+
+## REPL
+
+Running the REPL with cargo is straightforward:
+```
+cargo run
+```
+
+### Commands
+
+| Command | Description |
+| --- | --- |
+| /load | Loads one or multiple files or directories into the REPL |
+| /quit, /exit | Closes the REPL |
+
+### Loading builtins
+
+Most primitives are available without loading, but for further functions:
+
+```
+/load examples/_builtins.m
+/load examples/_list.m
+```
+
+These will eventually be loaded automatically at REPL start-up.
