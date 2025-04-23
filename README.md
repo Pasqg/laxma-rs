@@ -70,6 +70,7 @@ List::List(2, List::List(1, List::Empty()))
 
 - Bool: equivalent to bool in rust
 - Int: equivalent to i64 in rust
+- Float: equivalent to f64 in rust
 - String: equivalent to String in rust
 - Void: equivalent to () in rust
 
