@@ -29,8 +29,8 @@ pub(super) struct TypeInfo {
 impl TypeInfo {
     pub fn new() -> Self {
         let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID, FLOAT_ID]);
-        let bool_type = Rc::new(Type::SimpleType(BOOL_ID));
-        let void_type = Rc::new(Type::SimpleType(VOID_ID));
+        let bool_type = Rc::new(Type::PrimitiveType(BOOL_ID));
+        let void_type = Rc::new(Type::PrimitiveType(VOID_ID));
         let unknown_type = Rc::new(Type::Unknown);
         Self {
             primitive_types,
@@ -491,7 +491,7 @@ pub fn infer_expression_type(
             )?;
 
             match result.as_ref() {
-                Type::SimpleType(x) if *x == BOOL_ID => {}
+                Type::PrimitiveType(x) if *x == BOOL_ID => {}
                 _ => {
                     return Err(format!(
                         "If condition must be boolean but got '{}'",
@@ -547,9 +547,9 @@ pub fn infer_expression_type(
             current_function_id,
             id,
         ),
-        Expression::Integer(_) => Ok(Rc::new(Type::SimpleType(INT_ID))),
-        Expression::String(_) => Ok(Rc::new(Type::SimpleType(STRING_ID))),
-        Expression::Float(_) => Ok(Rc::new(Type::SimpleType(FLOAT_ID))),
+        Expression::Integer(_) => Ok(Rc::new(Type::PrimitiveType(INT_ID))),
+        Expression::String(_) => Ok(Rc::new(Type::PrimitiveType(STRING_ID))),
+        Expression::Float(_) => Ok(Rc::new(Type::PrimitiveType(FLOAT_ID))),
         Expression::LambdaExpression(function_definition) => infer_function_type(
             program,
             type_info,
@@ -575,7 +575,7 @@ pub fn infer_function_type(
     for argument in &current_function.arguments {
         match &argument.typing.as_ref() {
             Type::TypeParameter(_) => {}
-            Type::SimpleType(_) | Type::CompositeType(_, _) => {
+            Type::PrimitiveType(_) | Type::CompositeType(_, _) => {
                 let id = argument.typing.id();
                 if !type_info.type_exists(&id) {
                     return Err(format!("[1] '{}' doesn't exist", program.var_name(&id)));

@@ -17,7 +17,7 @@ pub(super) type RcType = Rc<Type>;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(super) enum Type {
-    SimpleType(IdentifierId),
+    PrimitiveType(IdentifierId),
     TypeParameter(IdentifierId),
     CompositeType(IdentifierId, Vec<RcType>),
     // IdentifierId is the id of the type name, not the name of the function
@@ -55,7 +55,7 @@ impl Type {
 
     pub fn name(&self, map: &IdentifierIdMap) -> Rc<String> {
         match self {
-            Type::SimpleType(id) => Rc::clone(map.get_identifier(id).unwrap()),
+            Type::PrimitiveType(id) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::TypeParameter(id) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::CompositeType(id, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::FunctionType(id, _, _, _) => Rc::clone(map.get_identifier(id).unwrap()),
@@ -80,7 +80,7 @@ impl Type {
 
     pub fn id(&self) -> IdentifierId {
         match self {
-            Type::SimpleType(id) => *id,
+            Type::PrimitiveType(id) => *id,
             Type::TypeParameter(id) => *id,
             Type::CompositeType(id, _) => *id,
             Type::FunctionType(id, _, _, _) => *id,
@@ -90,7 +90,7 @@ impl Type {
 
     pub fn type_parameters(&self) -> HashSet<IdentifierId> {
         match self {
-            Type::SimpleType(_) => HashSet::new(),
+            Type::PrimitiveType(_) => HashSet::new(),
             Type::TypeParameter(param) => HashSet::from([*param]),
             Type::CompositeType(_, vec) => {
                 let mut parameters = HashSet::new();
@@ -226,7 +226,7 @@ impl Program {
 fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Result<Type, String> {
     let name = ast.matched[0].unwrap_str();
     return match ast.id {
-        Some(Rules::Identifier) => Ok(Type::SimpleType(identifier_id_map.get_id(&Rc::new(name)))),
+        Some(Rules::Identifier) => Ok(Type::PrimitiveType(identifier_id_map.get_id(&Rc::new(name)))),
         Some(Rules::TypeParameter) => Ok(Type::TypeParameter(
             identifier_id_map.get_id(&Rc::new(name)),
         )),

@@ -179,7 +179,7 @@ fn compile_function(
                 .map(|arg| {
                     //todo: share with format type
                     match arg_types.get(arg).unwrap() {
-                        Type::SimpleType(name) => {
+                        Type::PrimitiveType(name) => {
                             if !type_info.primitive_types.contains(name) {
                                 format!("*{}", arg)
                             } else {
@@ -230,7 +230,7 @@ pub fn {function_name}{}({}) -> {} {{
 
 fn compile_type(_type: &Type) -> String {
     match _type {
-        Type::SimpleType(name) => name.clone(),
+        Type::PrimitiveType(name) => name.clone(),
         Type::CompositeType(name, vec) => format!(
             "{}<{}>",
             name,
@@ -246,7 +246,7 @@ fn compile_type(_type: &Type) -> String {
 
 fn format_type(_type: &Type, primitive_types: &HashSet<String>) -> String {
     match _type {
-        Type::SimpleType(name) => {
+        Type::PrimitiveType(name) => {
             if !primitive_types.contains(name) {
                 format!("Box<{}>", compile_type(_type))
             } else {
@@ -264,7 +264,7 @@ fn compile_type_definition(
     primitive_types: &HashSet<String>,
 ) -> Result<String, String> {
     let type_name = match &definition.def {
-        Type::SimpleType(name) => name,
+        Type::PrimitiveType(name) => name,
         Type::CompositeType(_, _) => &compile_type(&definition.def),
         _ => return Err(format!("Unexpected type name {:?}", definition.def)),
     };
