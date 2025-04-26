@@ -227,7 +227,7 @@ fn concretize_function_type(
         let arg_type = &arguments[i];
         if !type_parameters_bindings.are_compatible(arg_type, &provided_type) {
             return Err(format!(
-                "Argument {} in function '{}' in caller '{}' has type '{}' ('{}') but '{}' ('{}') was provided",
+                "Argument {} in function '{}' in caller '{}' has type {} (bound to {}) but {} (bound to {}) was provided",
                 i,
                 program.var_name(function_id),
                 program.var_name(caller_id),
@@ -303,7 +303,7 @@ pub fn infer_expression_type(
                 let type_variant = definition.variants.get(variant);
                 if type_variant.is_none() {
                     return Err(format!(
-                        "Undefined variant '{}' for type '{}' in function '{}'",
+                        "Undefined variant '{}' of type '{}' in function '{}'",
                         program.var_name(variant),
                         program.var_name(type_id),
                         program.var_name(current_function_id)

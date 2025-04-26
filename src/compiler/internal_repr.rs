@@ -226,7 +226,9 @@ impl Program {
 fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Result<Type, String> {
     let name = ast.matched[0].unwrap_str();
     return match ast.id {
-        Some(Rules::Identifier) => Ok(Type::PrimitiveType(identifier_id_map.get_id(&Rc::new(name)))),
+        Some(Rules::Identifier) => Ok(Type::PrimitiveType(
+            identifier_id_map.get_id(&Rc::new(name)),
+        )),
         Some(Rules::TypeParameter) => Ok(Type::TypeParameter(
             identifier_id_map.get_id(&Rc::new(name)),
         )),
@@ -467,8 +469,15 @@ pub fn expression_repr(
                     body.matched
                         .iter()
                         .map(|t| t.unwrap_str())
+                        .map(|t| {
+                            if t.as_str() == "->" {
+                                " -> ".to_string()
+                            } else {
+                                t
+                            }
+                        })
                         .collect::<Vec<String>>()
-                        .join(" "),
+                        .join(""),
                 )),
                 arguments: args,
                 bodies: vec![(

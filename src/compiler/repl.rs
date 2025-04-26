@@ -728,85 +728,176 @@ impl REPL {
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::InsertionOrderHashMap;
+
     use super::REPL;
 
     #[test]
-    fn test_type_errors() {
-        let mut repl = REPL::new();
+    fn test_primitive_type() {
+        run_test("type A -> A", ok(""));
+        run_test("type A -> A | B", ok(""));
+        run_test("type A -> A | B | C", ok(""));
+    }
 
-        assert_eq!(
-            repl.handle_input("type Type -> A | B | C Type"),
-            Ok(String::new())
-        );
-        assert_eq!(
-            repl.handle_input("type Type -> A | B | C Int"),
-            Ok(String::new())
-        );
-        assert_eq!(
-            repl.handle_input("type Type -> A | B | C D"),
-            Err("Undefined type 'D' for Type::C".to_string())
-        );
+    #[test]
+    fn test_primitive_type_errors() {
+        run_test("type A -> A | A", err("Duplicate variant 'A' of type 'A'"));
+    }
 
-        assert_eq!(repl.handle_input("Type::A()"), Ok("Type::A()".to_string()));
-        assert_eq!(
-            repl.handle_input("Type::A(0)"),
-            Err(
-                "Variant 'A' of type 'Type' expects 0 arguments but constructor provided 1"
-                    .to_string()
-            )
-        );
-        assert_eq!(repl.handle_input("Type::B()"), Ok("Type::B()".to_string()));
-        assert_eq!(
-            repl.handle_input("Type::B(0)"),
-            Err(
-                "Variant 'B' of type 'Type' expects 0 arguments but constructor provided 1"
-                    .to_string()
-            )
-        );
-        assert_eq!(
-            repl.handle_input("Type::C()"),
-            Err(
-                "Variant 'C' of type 'Type' expects 1 arguments but constructor provided 0"
-                    .to_string()
-            )
-        );
-        assert_eq!(
-            repl.handle_input("Type::C(0)"),
-            Ok("Type::C(0)".to_string())
-        );
-        assert_eq!(
-            repl.handle_input("Type::C(4.5)"),
-            Err("Expecting 'Int' in constructor for Type::C but got 'Float'".to_string())
-        );
-        assert_eq!(
-            repl.handle_input("Type::C(2 2)"),
-            Err(
-                "Variant 'C' of type 'Type' expects 1 arguments but constructor provided 2"
-                    .to_string()
-            )
-        );
+    #[test]
+    fn test_primitive_type_construction() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A", ok("")),
+            ("A::A()", ok("A::A()")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A | B", ok("")),
+            ("A::A()", ok("A::A()")),
+            ("A::B()", ok("A::B()")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A | B | C", ok("")),
+            ("A::A()", ok("A::A()")),
+            ("A::B()", ok("A::B()")),
+            ("A::C()", ok("A::C()")),
+        ]));
+    }
 
-        assert_eq!(
-            repl.handle_input("Type::D()"),
-            Err("Undefined variant 'D' for type 'Type' in function 'REPL'".to_string())
+    #[test]
+    fn test_primitive_type_construction_errors() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A", ok("")),
+            (
+                "A::A(0)",
+                err("Variant 'A' of type 'A' expects 0 arguments but constructor provided 1"),
+            ),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A | B", ok("")),
+            (
+                "A::A(0)",
+                err("Variant 'A' of type 'A' expects 0 arguments but constructor provided 1"),
+            ),
+            (
+                "A::B(0)",
+                err("Variant 'B' of type 'A' expects 0 arguments but constructor provided 1"),
+            ),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A", ok("")),
+            (
+                "A::B()",
+                err("Undefined variant 'B' of type 'A' in function 'REPL'"),
+            ),
+        ]));
+        run_test("A::A()", err("Undefined type 'A' in function 'REPL'"));
+    }
+
+    #[test]
+    fn test_primitive_cartesian_type() {
+        run_test("type A -> A Int", ok(""));
+        run_test("type A -> A Float", ok(""));
+        run_test("type A -> A String", ok(""));
+        run_test("type A -> A Int Int", ok(""));
+        run_test("type A -> A Int Int Int", ok(""));
+    }
+
+    #[test]
+    fn test_primitive_cartesian_type_errors() {
+        run_test(
+            "type A -> A B",
+            Err("Undefined type 'B' for A::A".to_string()),
         );
-        assert_eq!(
-            repl.handle_input("Types::A()"),
-            Err("Undefined type 'Types' in function 'REPL'".to_string())
+        run_test(
+            "type A -> A B | B",
+            Err("Undefined type 'B' for A::A".to_string()),
         );
     }
+
+    #[test]
+    fn test_primitive_cartesian_type_construction() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Int", ok("")),
+            ("A::A(0)", ok("A::A(0)")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Float", ok("")),
+            ("A::A(0.0)", ok("A::A(0.0)")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A String", ok("")),
+            ("A::A(\"a string\")", ok("A::A(\"a string\")")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Int Int", ok("")),
+            ("A::A(1 2)", ok("A::A(1, 2)")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Int Int Int", ok("")),
+            ("A::A(1 2 3)", ok("A::A(1, 2, 3)")),
+        ]));
+    }
+
+    #[test]
+    fn test_primitive_cartesian_type_construction_errors() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Int", ok("")),
+            (
+                "A::A()",
+                err("Variant 'A' of type 'A' expects 1 arguments but constructor provided 0"),
+            ),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Int", ok("")),
+            (
+                "A::A(0 0)",
+                err("Variant 'A' of type 'A' expects 1 arguments but constructor provided 2"),
+            ),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Int", ok("")),
+            (
+                "A::A(0.0)",
+                err("Expecting 'Int' in constructor for A::A but got 'Float'"),
+            ),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Float", ok("")),
+            (
+                "A::A(0)",
+                err("Expecting 'Float' in constructor for A::A but got 'Int'"),
+            ),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A String", ok("")),
+            (
+                "A::A(0)",
+                err("Expecting 'String' in constructor for A::A but got 'Int'"),
+            ),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("type A -> A Int String", ok("")),
+            (
+                "A::A(0 0)",
+                err("Expecting 'String' in constructor for A::A but got 'Int'"),
+            ),
+        ]));
+    }
+
+    #[test]
+    fn test_primitive_recursive_type() {
+        run_test("type T -> VarA | VarB T", ok(""));
+        //todo: this kind of recursion shouldn't be allowed because it's infinite and the type can't actually be constructed
+        run_test("type T -> VarA T", ok(""));
+        run_test("type T -> VarA T | VarB", ok(""));
+    }
+
     #[test]
     fn test_composite_type_errors() {
         let mut repl = REPL::new();
 
-        assert_eq!(
-            repl.handle_input("type Type['T] -> A | B"),
-            Ok(String::new())
-        );
-        assert_eq!(
-            repl.handle_input("type Type['T] -> A | B 'T"),
-            Ok(String::new())
-        );
+        assert_eq!(repl.handle_input("type Type['T] -> A | B"), ok(""));
+        assert_eq!(repl.handle_input("type Type['T] -> A | B 'T"), ok(""));
         assert_eq!(
             repl.handle_input("type Type['T] -> A | B 'P"),
             Err("Undefined type ''P' for Type::B".to_string())
@@ -814,34 +905,102 @@ mod tests {
     }
 
     #[test]
+    fn test_function_types() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn test -> 2.3", ok("")),
+            ("test()", ok("2.3")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn test x:Int -> x", ok("")),
+            ("test(2)", ok("2")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn + a:Int b:Int -> 0", ok("")),
+            ("fn test x:Int y:Int -> +(x y)", ok("")),
+            ("test(2 3)", ok("5")),
+        ]));
+    }
+
+    #[test]
     fn test_function_type_errors() {
-        let mut repl = REPL::new();
+        run_test(
+            "fn test x:Int -> List::A(x)",
+            err("Undefined type 'List' in function 'test'"),
+        );
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn test x:Int -> x", ok("")),
+            ("test()", err("Function 'test' in caller 'REPL' expects 1 arguments but 0 were provided")),
+            ("test(1 2)", err("Function 'test' in caller 'REPL' expects 1 arguments but 2 were provided")),
+            ("test(1.0)", err("Argument 0 in function 'test' in caller 'REPL' has type 'Int' ('Int') but 'Float' ('Float') was provided")),
+        ]));
+        run_test(
+            "fn test x:Int y:Int -> List::A(x)",
+            err("Undefined type 'List' in function 'test'"),
+        );
+    }
 
-        assert_eq!(
-            repl.handle_input("fn test x:Int -> List::A(x)"),
-            Err("Undefined type 'List' in function 'test'".to_string())
-        );
-        assert_eq!(
-            repl.handle_input("fn test x:Int -> 2.3"),
-            Ok("".to_string())
-        );
+    #[test]
+    fn test_parametrised_function_types() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn test x:'T -> x", ok("")),
+            ("test(2)", ok("2")),
+            ("test(2.2)", ok("2.2")),
+        ]));
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn test x:'T y:'P -> x", ok("")),
+            ("test(2 \"\")", ok("2")),
+            ("test(2.2 3.0)", ok("2.2")),
+        ]));
+    }
 
-        assert_eq!(
-            repl.handle_input("test()"),
-            Err(
-                "Function 'test' in caller 'REPL' expects 1 arguments but 0 were provided"
-                    .to_string()
-            )
-        );
-        assert_eq!(repl.handle_input("test(2)"), Ok("2.3".to_string()));
-        assert_eq!(
-            repl.handle_input("test(2 2)"),
-            Err(
-                "Function 'test' in caller 'REPL' expects 1 arguments but 2 were provided"
-                    .to_string()
-            )
-        );
-        assert_eq!(repl.handle_input("test(2.2)"), Err("Argument 0 in function 'test' in caller 'REPL' has type 'Int' ('Int') but 'Float' ('Float') was provided".to_string()));
+    #[test]
+    fn test_parametrised_function_type_errors() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn + a:Int b:Int -> 0", ok("")),
+            ("fn test x:'T y:'T -> +(x y)", ok("")),
+            ("test(2 1)", ok("3")),
+            ("test(2.2 1)", err("Argument 1 in function 'test' in caller 'REPL' has type Float (bound to 'T) but Int (bound to Int) was provided")),
+        ]));
+        //todo: test fn test x:'T y:'S -> +(x y) because this crashes when calling test(1 1.1) (shouldn't allow 'T to bind 'S, they should always be considered different)
+    }
+
+    #[test]
+    fn test_lambdas() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn + a:Int b:Int -> 0", ok("")),
+            ("fn * a:Int b:Int -> 0", ok("")),
+            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))", ok("")),
+            ("fn f x:Int -> *(x 3)", ok("")),
+            ("fn g x:Int -> +(x 2)", ok("")),
+            ("compose(f g)", ok("Function (x:'P) -> f(g(x))")),
+            ("with h = compose(f g) h(7)", ok("27")),
+            ("with h = compose(g f) h(7)", ok("23")),
+        ]));
+
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))", ok("")),
+            ("fn f x:Int -> 2.2", ok("")),
+            ("fn g x:Float -> \"ok\"", ok("")),
+            ("compose(f g)", ok("Function (x:'P) -> f(g(x))")),
+            //todo: should error out cause "ok" is not an Int required by f
+            ("with h = compose(f g) h(7)", ok("2.2")),
+            ("with h = compose(g f) h(7)", ok("\"ok\"")),
+        ]));
+    }
+
+    #[test]
+    fn test_lambda_errors() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("fn + a:Int b:Int -> 0", ok("")),
+            ("fn * a:Int b:Int -> 0", ok("")),
+            //todo: should technically error out because 'R cannot be 'P and 'P cannot be 'Q
+            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> g(f(x))", ok("")),
+            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))", ok("")),
+            ("fn f x:Int -> *(x 3)", ok("")),
+            ("fn g x:Int -> +(x 2)", ok("")),
+            ("compose(f g)", ok("Function (x:'P) -> f(g(x))")),
+            ("with h = compose(f g) h(7)", ok("27")),
+        ]));
     }
 
     #[test]
@@ -849,8 +1008,10 @@ mod tests {
         let mut repl = REPL::new();
 
         assert_eq!(
-            repl.handle_input("fn weird_f x:Int = 0 -> 0 _ -> with weird_f = (x:Float s:String)->123 weird_f(0)"),
-            Ok(String::new())
+            repl.handle_input(
+                "fn weird_f x:Int = 0 -> 0 _ -> with weird_f = (x:Float s:String)->123 weird_f(0)"
+            ),
+            ok("")
         );
         assert_eq!(repl.handle_input("weird_f(0)"), Ok("0".to_string()));
         assert_eq!(repl.handle_input("weird_f(1)"), Ok("0".to_string()));
@@ -861,10 +1022,49 @@ mod tests {
     fn test_inner_bindings_shadow_outer_bindings() {
         let mut repl = REPL::new();
 
-        assert_eq!(repl.handle_input("fn h -> 0"), Ok(String::new()));
-        assert_eq!(repl.handle_input("with h = (x:Int)->2 h(1)"), Ok("2".to_string()));
-        assert_eq!(repl.handle_input("with h = (x:Int)->2 h()"), Err("Function 'h' in caller 'REPL' expects 1 arguments but 0 were provided".to_string()));
-        assert_eq!(repl.handle_input("with h = (x:Int y:Int)->x h(3)"), Err("Function 'h' in caller 'REPL' expects 2 arguments but 1 were provided".to_string()));
-        assert_eq!(repl.handle_input("with h = (x:Int y:Int)->x h(3, 4)"), Ok("3".to_string()));
+        assert_eq!(repl.handle_input("fn h -> 0"), ok(""));
+        assert_eq!(
+            repl.handle_input("with h = (x:Int)->2 h(1)"),
+            Ok("2".to_string())
+        );
+        assert_eq!(
+            repl.handle_input("with h = (x:Int)->2 h()"),
+            Err(
+                "Function 'h' in caller 'REPL' expects 1 arguments but 0 were provided".to_string()
+            )
+        );
+        assert_eq!(
+            repl.handle_input("with h = (x:Int y:Int)->x h(3)"),
+            Err(
+                "Function 'h' in caller 'REPL' expects 2 arguments but 1 were provided".to_string()
+            )
+        );
+        assert_eq!(
+            repl.handle_input("with h = (x:Int y:Int)->x h(3, 4)"),
+            Ok("3".to_string())
+        );
+    }
+
+    fn run_test(input: &str, expected: Result<String, String>) {
+        run_tests(&InsertionOrderHashMap::from([(input, expected)]));
+    }
+
+    fn run_tests(tests: &InsertionOrderHashMap<&str, Result<String, String>>) {
+        let mut repl: REPL = REPL::new();
+
+        for input in tests.keys() {
+            assert_eq!(
+                repl.handle_input(input),
+                tests.get(input.as_ref()).unwrap().to_owned()
+            );
+        }
+    }
+
+    fn ok(s: &str) -> Result<String, String> {
+        Ok(s.to_string())
+    }
+
+    fn err(s: &str) -> Result<String, String> {
+        Err(s.to_string())
     }
 }
