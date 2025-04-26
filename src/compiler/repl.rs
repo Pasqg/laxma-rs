@@ -795,7 +795,7 @@ mod tests {
         );
     }
     #[test]
-    fn test_parametrized_type_errors() {
+    fn test_composite_type_errors() {
         let mut repl = REPL::new();
 
         assert_eq!(

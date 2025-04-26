@@ -187,7 +187,7 @@ fn compile_function(
                             }
                         }
                         Type::TypeParameter(_) => arg.to_string(),
-                        Type::ParametrizedType(_, _) => format!("*{arg}"),
+                        Type::CompositeType(_, _) => format!("*{arg}"),
                         Type::Unknown => panic!("Arg type is unknown"),
                     }
                 })
@@ -231,7 +231,7 @@ pub fn {function_name}{}({}) -> {} {{
 fn compile_type(_type: &Type) -> String {
     match _type {
         Type::SimpleType(name) => name.clone(),
-        Type::ParametrizedType(name, vec) => format!(
+        Type::CompositeType(name, vec) => format!(
             "{}<{}>",
             name,
             vec.iter()
@@ -254,7 +254,7 @@ fn format_type(_type: &Type, primitive_types: &HashSet<String>) -> String {
             }
         }
         Type::TypeParameter(_) => compile_type(_type),
-        Type::ParametrizedType(_, _) => format!("Box<{}>", compile_type(_type)),
+        Type::CompositeType(_, _) => format!("Box<{}>", compile_type(_type)),
         Type::Unknown => panic!("Unsupported Unknown type"),
     }
 }
@@ -265,7 +265,7 @@ fn compile_type_definition(
 ) -> Result<String, String> {
     let type_name = match &definition.def {
         Type::SimpleType(name) => name,
-        Type::ParametrizedType(_, _) => &compile_type(&definition.def),
+        Type::CompositeType(_, _) => &compile_type(&definition.def),
         _ => return Err(format!("Unexpected type name {:?}", definition.def)),
     };
 

@@ -10,7 +10,7 @@ pub enum Rules {
     Float,
     Identifier,
     TypeParameter,
-    ParametrizedType,
+    CompositeType,
     FunctionType,
     Argument,
     Destructuring,
@@ -99,9 +99,9 @@ fn destructuring() -> Combinators<Rules> {
 
 fn type_name() -> Combinators<Rules> {
     let type_name = parser_ref();
-    let parametrized_type = || {
+    let composite_type = || {
         and_match(
-            Rules::ParametrizedType,
+            Rules::CompositeType,
             vec![
                 identifier(),
                 slit("["),
@@ -125,7 +125,7 @@ fn type_name() -> Combinators<Rules> {
     };
     type_name.bind(or_match_flat(vec![
         function_type(),
-        parametrized_type(),
+        composite_type(),
         basic_type_name(),
     ]));
     type_name

@@ -19,7 +19,7 @@ pub(super) type RcType = Rc<Type>;
 pub(super) enum Type {
     SimpleType(IdentifierId),
     TypeParameter(IdentifierId),
-    ParametrizedType(IdentifierId, Vec<RcType>),
+    CompositeType(IdentifierId, Vec<RcType>),
     // IdentifierId is the id of the type name, not the name of the function
     // (id, arguments types, return type, captures types)
     FunctionType(
@@ -57,7 +57,7 @@ impl Type {
         match self {
             Type::SimpleType(id) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::TypeParameter(id) => Rc::clone(map.get_identifier(id).unwrap()),
-            Type::ParametrizedType(id, _) => Rc::clone(map.get_identifier(id).unwrap()),
+            Type::CompositeType(id, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::FunctionType(id, _, _, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::Unknown => Rc::new("Unknown".to_string()),
         }
@@ -65,7 +65,7 @@ impl Type {
 
     pub fn full_repr(&self, map: &IdentifierIdMap) -> Rc<String> {
         match self {
-            Type::ParametrizedType(id, items) => Rc::new(format!(
+            Type::CompositeType(id, items) => Rc::new(format!(
                 "{}[{}]",
                 map.get_identifier(&id).unwrap(),
                 items
@@ -82,7 +82,7 @@ impl Type {
         match self {
             Type::SimpleType(id) => *id,
             Type::TypeParameter(id) => *id,
-            Type::ParametrizedType(id, _) => *id,
+            Type::CompositeType(id, _) => *id,
             Type::FunctionType(id, _, _, _) => *id,
             Type::Unknown => UNKNOWN_ID,
         }
@@ -92,7 +92,7 @@ impl Type {
         match self {
             Type::SimpleType(_) => HashSet::new(),
             Type::TypeParameter(param) => HashSet::from([*param]),
-            Type::ParametrizedType(_, vec) => {
+            Type::CompositeType(_, vec) => {
                 let mut parameters = HashSet::new();
                 for t in vec {
                     for parameter in t.type_parameters() {
@@ -230,7 +230,7 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
         Some(Rules::TypeParameter) => Ok(Type::TypeParameter(
             identifier_id_map.get_id(&Rc::new(name)),
         )),
-        Some(Rules::ParametrizedType) => {
+        Some(Rules::CompositeType) => {
             let subtype = &ast.children[2];
             let type_params = if subtype.id == Some(Rules::Identifier)
                 || subtype.id != Some(Rules::Elements)
@@ -246,7 +246,7 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
 
             let id = identifier_id_map.get_id(&Rc::new(name));
 
-            Ok(Type::ParametrizedType(id, type_params))
+            Ok(Type::CompositeType(id, type_params))
         }
         Some(Rules::FunctionType) => {
             let arguments = &ast.children[1];

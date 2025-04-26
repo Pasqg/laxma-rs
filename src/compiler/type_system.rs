@@ -82,7 +82,7 @@ impl TypeParameterBindings {
                 }
                 Rc::clone(concrete.unwrap())
             }
-            Type::ParametrizedType(id, items) => Rc::new(Type::ParametrizedType(
+            Type::CompositeType(id, items) => Rc::new(Type::CompositeType(
                 *id,
                 items.iter().map(|t| self.concretize(t)).collect(),
             )),
@@ -139,8 +139,8 @@ impl TypeParameterBindings {
                 self.are_compatible(first_output, second_output)
             }
             (
-                Type::ParametrizedType(id_first, items_first),
-                Type::ParametrizedType(id_second, items_second),
+                Type::CompositeType(id_first, items_first),
+                Type::CompositeType(id_second, items_second),
             ) => {
                 if *id_first != *id_second || items_first.len() != items_second.len() {
                     return false;
@@ -575,7 +575,7 @@ pub fn infer_function_type(
     for argument in &current_function.arguments {
         match &argument.typing.as_ref() {
             Type::TypeParameter(_) => {}
-            Type::SimpleType(_) | Type::ParametrizedType(_, _) => {
+            Type::SimpleType(_) | Type::CompositeType(_, _) => {
                 let id = argument.typing.id();
                 if !type_info.type_exists(&id) {
                     return Err(format!("[1] '{}' doesn't exist", program.var_name(&id)));
