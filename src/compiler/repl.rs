@@ -142,11 +142,12 @@ impl REPL {
             return Ok(result.value_to_str(&|id| Rc::clone(self.program.var_name(id)))?);
         }
 
-        Err(format!(
-            "ERROR(s): {} {}",
-            original_error,
-            result.unwrap_err()
-        ))
+        let expr_error = result.unwrap_err();
+        if expr_error.as_str() == "Expected Expression but got Some(Program)" {
+            return Err(original_error);
+        }
+
+        Err(format!("ERROR(s): {} {}", original_error, expr_error))
     }
 
     fn pattern_match(

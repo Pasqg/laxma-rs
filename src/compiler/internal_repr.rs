@@ -613,7 +613,15 @@ fn type_definition_repr(
     for child in &ast.children[3].children {
         if child.id == Some(Rules::TypeDef) {
             let (name, variant) = type_variant_repr(&child, identifier_id_map)?;
-            variants.insert(identifier_id_map.get_id(&Rc::new(name)), Rc::new(variant));
+            let variant_id = identifier_id_map.get_id(&Rc::new(name));
+            if variants.contains_key(&variant_id) {
+                return Err(format!(
+                    "Duplicate variant '{}' of type '{}'",
+                    identifier_id_map.get_identifier(&variant_id).unwrap(),
+                    _type.full_repr(identifier_id_map),
+                ));
+            }
+            variants.insert(variant_id, Rc::new(variant));
         }
     }
 
