@@ -26,6 +26,14 @@ where
         self.map.insert(rc, v);
     }
 
+    pub fn from<const N: usize>(from: [(K, V); N]) -> Self{
+        let mut map = Self::new();
+        for (k, v) in from {
+            map.insert(k, v);
+        }
+        map
+    }
+
     pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
     where
         Rc<K>: Borrow<Q>,
