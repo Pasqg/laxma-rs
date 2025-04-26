@@ -89,15 +89,23 @@ impl Value {
             }
             Value::Function(def, _) => Ok(format!("Function {}", id_to_name(&def.id))),
             Value::Integer(x) => Ok(format!("{x}")),
-            Value::Float(x) => Ok(format!("{x}")),
+            Value::Float(x) => {
+                if x.fract() == 0.0 {
+                    Ok(format!("{x}.0"))
+                } else {
+                    Ok(format!("{x}"))
+                }
+            }
             Value::Bool(x) => Ok(format!("{x}")),
-            Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len() - 1])),
+            Value::String(x) => Ok(format!("\"{}\"", &x.to_string()[1..x.len() - 1])),
             Value::Void => Ok("Void".to_string()),
             Value::Unknown => Ok("Unknown".to_string()),
         }
     }
 
-    pub(super) fn as_function(&self) -> (&Rc<FunctionDefinition>, &Rc<IntMap<IdentifierId, RcValue>>) {
+    pub(super) fn as_function(
+        &self,
+    ) -> (&Rc<FunctionDefinition>, &Rc<IntMap<IdentifierId, RcValue>>) {
         match self {
             Value::Function(definition, captures) => (definition, captures),
             _ => panic!("Not a boolean"),
