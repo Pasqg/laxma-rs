@@ -117,10 +117,10 @@ impl Type {
             "({}) -> {}",
             types
                 .iter()
-                .map(|t| t.name(identifier_id_map).to_string())
+                .map(|t| t.full_repr(identifier_id_map).as_ref().to_owned())
                 .collect::<Vec<String>>()
                 .join(", "),
-            return_type.name(identifier_id_map)
+            return_type.full_repr(identifier_id_map)
         )));
         Type::FunctionType(lambda_name_id, types, return_type, captures.clone())
     }

@@ -103,7 +103,7 @@ impl REPL {
                 println!(
                     "Defined function {}: {}",
                     self.program.var_name(id),
-                    self.program.var_name(&function_type.id()),
+                    function_type.full_repr(&self.program.identifier_id_map)
                 );
 
                 self.program.functions.insert(**id, Rc::clone(definition));
