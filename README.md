@@ -206,7 +206,7 @@ fn factorial x:Int =
 Functions can be passed as function parameters or returned by another function.
 
 ```rust
-fn compose f:('P) -> 'Q g:('Q)->'R x:'P -> f(g(x))
+fn compose f:('Q)->'R g:('P)->'Q x:'P -> f(g(x))
 ```
 
 When resolving function calls, function arguments have precedence over user defined functions and built-ins. In other words, function arguments shadow the caller scope.
@@ -216,7 +216,7 @@ When resolving function calls, function arguments have precedence over user defi
 An anonymous function can be created as such:
 
 ```rust
-fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))
+fn compose f:('Q)->'R g:('P)->'Q -> (x:'P) -> f(g(x))
 ```
 
 Lambdas capture the outside environment in the same way as inner expression get outer bindings
@@ -249,11 +249,10 @@ cargo run
 
 ### Loading builtins
 
-Most primitives are available without loading, but for further functions:
+Most primitives are available without loading any file, but it is recommended to load:
 
 ```
-/load examples/_builtins.m
-/load examples/_list.m
+/load lib/core
 ```
 
 These will eventually be loaded automatically at REPL start-up.
