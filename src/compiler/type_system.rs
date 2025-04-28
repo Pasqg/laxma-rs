@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    f32::consts::E,
     rc::Rc,
 };
 
@@ -7,8 +8,8 @@ use nohash_hasher::IntMap;
 
 use super::{
     identifier_map::{
-        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNDECIDED_ID, VOID_ID,
-        WILDCARD_ID,
+        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNDECIDED_ID,
+        VOID_ID, WILDCARD_ID,
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type,
@@ -111,12 +112,14 @@ impl TypeParameterBindings {
                 }
 
                 if abstract_binding.is_none() {
-                    self.bindings.insert(abstract_t.id(), Rc::clone(concrete_binding.unwrap()));
+                    self.bindings
+                        .insert(abstract_t.id(), Rc::clone(concrete_binding.unwrap()));
                     return true;
                 }
 
                 if concrete_binding.is_none() {
-                    self.bindings.insert(concrete_t.id(), Rc::clone(abstract_binding.unwrap()));
+                    self.bindings
+                        .insert(concrete_t.id(), Rc::clone(abstract_binding.unwrap()));
                     return true;
                 }
 
@@ -237,7 +240,7 @@ fn concretize_function_type(
 
     for i in 0..parameters.len() {
         let arg_expr = &parameters[i];
-        let provided_type =
+        let provided_type: Rc<Type> =
             infer_expression_type(program, type_info, identifier_types, caller_id, arg_expr)?;
 
         let arg_type = &arguments[i];
@@ -357,8 +360,7 @@ pub fn infer_expression_type(
                                 &expressions[i],
                             )?;
 
-                            if !type_parameter_bindings.is_subtype(&expression_type, &items[i])
-                            {
+                            if !type_parameter_bindings.is_subtype(&expression_type, &items[i]) {
                                 return Err(format!(
                                     "Expecting '{}' in constructor for {}::{variant} but got '{}'",
                                     &type_parameter_bindings
@@ -687,6 +689,7 @@ pub fn infer_function_type(
                                 program.var_name(&function_id)
                             ));
                         }
+                        let type_def = Rc::clone(&result.unwrap().def);
                         let variant = result.unwrap().variants.get(&destructuring.0);
                         if variant.is_none() {
                             return Err(format!(
@@ -704,19 +707,32 @@ pub fn infer_function_type(
                                     program.var_name(&function_id)));
                                 }
                             }
-                            TypeVariant::Cartesian(name, items) => {
-                                if items.len() != destructuring.1.len() {
-                                    return Err(format!("Variant '{name}' for type '{}' expects {} components but got {} in function '{}'", program.var_name(&arg.typing.id()), items.len(), destructuring.1.len(),
+                            TypeVariant::Cartesian(name, component_types) => {
+                                if component_types.len() != destructuring.1.len() {
+                                    return Err(format!("Variant '{name}' for type '{}' expects {} components but got {} in function '{}'", program.var_name(&arg.typing.id()), component_types.len(), destructuring.1.len(),
                                     program.var_name(&function_id)));
                                 }
+
+                                let mut bindings = TypeParameterBindings::new();
+                                //binds argument to abstract type definition
+                                if !bindings.is_subtype(&arg.typing, &type_def) {
+                                    return Err(format!(
+                                        "Typing error: {} is not subtype of {}",
+                                        arg.typing.full_repr(&program.identifier_id_map),
+                                        type_def.full_repr(&program.identifier_id_map),
+                                    ));
+                                }
+
                                 let mut k = 0;
                                 for inner_component in &destructuring.1 {
                                     match inner_component {
                                         DestructuringComponent::Identifier(identifier)
                                             if *identifier != WILDCARD_ID =>
                                         {
-                                            identifier_types
-                                                .insert(*identifier, Rc::clone(&items[k]));
+                                            identifier_types.insert(
+                                                *identifier,
+                                                bindings.concretize(&component_types[k]),
+                                            );
                                         }
                                         _ => {}
                                     }
