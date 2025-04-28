@@ -18,7 +18,7 @@ pub(super) type RcType = Rc<Type>;
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(super) enum Type {
     PrimitiveType(IdentifierId),
-    TypeParameter(IdentifierId),
+    UnboundTypeVariable(IdentifierId),
     CompositeType(IdentifierId, Vec<RcType>),
     // IdentifierId is the id of the type name, not the name of the function
     // (id, arguments types, return type, captures types)
@@ -41,7 +41,7 @@ impl Type {
 
     pub fn is_type_parameter(&self) -> bool {
         match self {
-            Type::TypeParameter(_) => true,
+            Type::UnboundTypeVariable(_) => true,
             _ => false,
         }
     }
@@ -56,7 +56,7 @@ impl Type {
     pub fn name(&self, map: &IdentifierIdMap) -> Rc<String> {
         match self {
             Type::PrimitiveType(id) => Rc::clone(map.get_identifier(id).unwrap()),
-            Type::TypeParameter(id) => Rc::clone(map.get_identifier(id).unwrap()),
+            Type::UnboundTypeVariable(id) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::CompositeType(id, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::FunctionType(id, _, _, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::Undecided => Rc::new("Undecided".to_string()),
@@ -81,7 +81,7 @@ impl Type {
     pub fn id(&self) -> IdentifierId {
         match self {
             Type::PrimitiveType(id) => *id,
-            Type::TypeParameter(id) => *id,
+            Type::UnboundTypeVariable(id) => *id,
             Type::CompositeType(id, _) => *id,
             Type::FunctionType(id, _, _, _) => *id,
             Type::Undecided => UNDECIDED_ID,
@@ -91,7 +91,7 @@ impl Type {
     pub fn type_parameters(&self) -> HashSet<IdentifierId> {
         match self {
             Type::PrimitiveType(_) => HashSet::new(),
-            Type::TypeParameter(param) => HashSet::from([*param]),
+            Type::UnboundTypeVariable(param) => HashSet::from([*param]),
             Type::CompositeType(_, vec) => {
                 let mut parameters = HashSet::new();
                 for t in vec {
@@ -229,7 +229,7 @@ fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Resul
         Some(Rules::Identifier) => Ok(Type::PrimitiveType(
             identifier_id_map.get_id(&Rc::new(name)),
         )),
-        Some(Rules::TypeParameter) => Ok(Type::TypeParameter(
+        Some(Rules::TypeParameter) => Ok(Type::UnboundTypeVariable(
             identifier_id_map.get_id(&Rc::new(name)),
         )),
         Some(Rules::CompositeType) => {

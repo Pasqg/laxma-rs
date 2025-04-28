@@ -75,7 +75,7 @@ impl TypeParameterBindings {
                 self.concretize(outputs),
                 captures.clone(),
             )),
-            Type::TypeParameter(id) => {
+            Type::UnboundTypeVariable(id) => {
                 let concrete = self.bindings.get(id);
                 if concrete.is_none() {
                     return Rc::clone(_type);
@@ -90,36 +90,52 @@ impl TypeParameterBindings {
         }
     }
 
-    fn are_compatible(&mut self, first: &RcType, second: &RcType) -> bool {
-        //todo: this concretization should only work one way! List['T] as argument for List[Int] is not valid
-
-        match (first.as_ref(), second.as_ref()) {
-            (Type::Unknown, Type::Unknown) => false,
-            (Type::Unknown, _) => true,
-            (_, Type::Unknown) => true,
-            (Type::TypeParameter(id1), Type::TypeParameter(id2)) => {
-                if *id1 == *id2 {
+    fn is_subtype(&mut self, concrete_t: &RcType, abstract_t: &RcType) -> bool {
+        match (concrete_t.as_ref(), abstract_t.as_ref()) {
+            (Type::Undecided, Type::Undecided) => false,
+            (Type::Undecided, _) => true,
+            (_, Type::Undecided) => true,
+            (Type::UnboundTypeVariable(concrete_id), Type::UnboundTypeVariable(abstract_id)) => {
+                if *concrete_id == *abstract_id {
                     return true;
                 }
 
-                self.bindings.insert(first.id(), Rc::clone(second));
-                self.bindings.insert(second.id(), Rc::clone(first));
+                let abstract_binding = self.bindings.get(abstract_id);
+                let concrete_binding = self.bindings.get(concrete_id);
+                if abstract_binding.is_none() && concrete_binding.is_none() {
+                    return false;
+                }
+
+                if abstract_binding.is_some() && concrete_binding.is_some() {
+                    return abstract_binding.unwrap().id() == concrete_binding.unwrap().id();
+                }
+
+                if abstract_binding.is_none() {
+                    self.bindings.insert(abstract_t.id(), Rc::clone(concrete_binding.unwrap()));
+                    return true;
+                }
+
+                if concrete_binding.is_none() {
+                    self.bindings.insert(concrete_t.id(), Rc::clone(abstract_binding.unwrap()));
+                    return true;
+                }
+
+                false
+            }
+            (Type::UnboundTypeVariable(_), _) => {
+                let binding = self.bindings.get(&concrete_t.id());
+                if binding.is_some() {
+                    return binding.unwrap().id() == abstract_t.id();
+                }
+                self.bindings.insert(concrete_t.id(), Rc::clone(abstract_t));
                 true
             }
-            (Type::TypeParameter(_), _) => {
-                let binding = self.bindings.get(&first.id());
+            (_, Type::UnboundTypeVariable(_)) => {
+                let binding = self.bindings.get(&abstract_t.id());
                 if binding.is_some() {
-                    return binding.unwrap().id() == second.id();
+                    return binding.unwrap().id() == concrete_t.id();
                 }
-                self.bindings.insert(first.id(), Rc::clone(second));
-                true
-            }
-            (_, Type::TypeParameter(_)) => {
-                let binding = self.bindings.get(&second.id());
-                if binding.is_some() {
-                    return binding.unwrap().id() == first.id();
-                }
-                self.bindings.insert(second.id(), Rc::clone(first));
+                self.bindings.insert(abstract_t.id(), Rc::clone(concrete_t));
                 true
             }
             (
@@ -131,12 +147,12 @@ impl TypeParameterBindings {
                 }
 
                 for i in 0..first_inputs.len() {
-                    if !self.are_compatible(&first_inputs[i], &second_inputs[i]) {
+                    if !self.is_subtype(&first_inputs[i], &second_inputs[i]) {
                         return false;
                     }
                 }
 
-                self.are_compatible(first_output, second_output)
+                self.is_subtype(first_output, second_output)
             }
             (
                 Type::CompositeType(id_first, items_first),
@@ -147,13 +163,13 @@ impl TypeParameterBindings {
                 }
 
                 for i in 0..items_first.len() {
-                    if !self.are_compatible(&items_first[i], &items_second[i]) {
+                    if !self.is_subtype(&items_first[i], &items_second[i]) {
                         return false;
                     }
                 }
                 true
             }
-            _ => first.id() == second.id(),
+            _ => concrete_t.id() == abstract_t.id(),
         }
     }
 }
@@ -225,7 +241,8 @@ fn concretize_function_type(
             infer_expression_type(program, type_info, identifier_types, caller_id, arg_expr)?;
 
         let arg_type = &arguments[i];
-        if !type_parameters_bindings.are_compatible(arg_type, &provided_type) {
+        let concretised_arg_type = type_parameters_bindings.concretize(arg_type);
+        if !type_parameters_bindings.is_subtype(&provided_type, &concretised_arg_type) {
             return Err(format!(
                 "Argument {} in function '{}' in caller '{}' has type {} (bound to {}) but {} (bound to {}) was provided",
                 i,
@@ -340,7 +357,7 @@ pub fn infer_expression_type(
                                 &expressions[i],
                             )?;
 
-                            if !type_parameter_bindings.are_compatible(&expression_type, &items[i])
+                            if !type_parameter_bindings.is_subtype(&expression_type, &items[i])
                             {
                                 return Err(format!(
                                     "Expecting '{}' in constructor for {}::{variant} but got '{}'",
@@ -575,7 +592,7 @@ pub fn infer_function_type(
 
     for argument in &current_function.arguments {
         match &argument.typing.as_ref() {
-            Type::TypeParameter(_) => {}
+            Type::UnboundTypeVariable(_) => {}
             Type::PrimitiveType(_) | Type::CompositeType(_, _) => {
                 let id = argument.typing.id();
                 if !type_info.type_exists(&id) {
@@ -723,7 +740,7 @@ pub fn infer_function_type(
 
             if previous_branch_type.is_some()
                 && !type_parameters_bindings
-                    .are_compatible(&previous_branch_type.unwrap(), &branch_type)
+                    .is_subtype(&previous_branch_type.unwrap(), &branch_type)
             {
                 all_compatible = false;
             }

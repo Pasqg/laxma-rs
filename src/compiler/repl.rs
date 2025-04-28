@@ -931,7 +931,7 @@ mod tests {
             ("fn test x:Int -> x", ok("")),
             ("test()", err("Function 'test' in caller 'REPL' expects 1 arguments but 0 were provided")),
             ("test(1 2)", err("Function 'test' in caller 'REPL' expects 1 arguments but 2 were provided")),
-            ("test(1.0)", err("Argument 0 in function 'test' in caller 'REPL' has type 'Int' ('Int') but 'Float' ('Float') was provided")),
+            ("test(1.0)", err("Argument 0 in function 'test' in caller 'REPL' has type Int (bound to Int) but Float (bound to Float) was provided")),
         ]));
         run_test(
             "fn test x:Int y:Int -> List::A(x)",
@@ -969,22 +969,25 @@ mod tests {
         run_tests(&InsertionOrderHashMap::from([
             ("fn + a:Int b:Int -> 0", ok("")),
             ("fn * a:Int b:Int -> 0", ok("")),
-            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))", ok("")),
-            ("fn f x:Int -> *(x 3)", ok("")),
-            ("fn g x:Int -> +(x 2)", ok("")),
-            ("compose(f g)", ok("Function (x:'P) -> f(g(x))")),
-            ("with h = compose(f g) h(7)", ok("27")),
-            ("with h = compose(g f) h(7)", ok("23")),
+            (
+                "fn compose f:('Q)->'R g:('P)->'Q -> (x:'P)->f(g(x))",
+                ok(""),
+            ),
+            ("fn f2 x:Int -> *(x 3)", ok("")),
+            ("fn g2 x:Int -> +(x 2)", ok("")),
+            ("compose(f2 g2)", ok("Function (x:'P) -> f(g(x))")),
+            ("with h = compose(f2 g2) h(7)", ok("27")),
         ]));
 
         run_tests(&InsertionOrderHashMap::from([
-            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))", ok("")),
-            ("fn f x:Int -> 2.2", ok("")),
-            ("fn g x:Float -> \"ok\"", ok("")),
-            ("compose(f g)", ok("Function (x:'P) -> f(g(x))")),
-            //todo: should error out cause "ok" is not an Int required by f
-            ("with h = compose(f g) h(7)", ok("2.2")),
-            ("with h = compose(g f) h(7)", ok("\"ok\"")),
+            (
+                "fn compose f:('Q)->'R g:('P)->'Q -> (x:'P)->f(g(x))",
+                ok(""),
+            ),
+            ("fn f2 x:Float -> \"ok\"", ok("")),
+            ("fn g2 x:Int -> 2.2", ok("")),
+            ("compose(f2 g2)", ok("Function (x:'P) -> f(g(x))")),
+            ("with h = compose(f2 g2) h(7)", ok("\"ok\"")),
         ]));
     }
 
@@ -993,13 +996,38 @@ mod tests {
         run_tests(&InsertionOrderHashMap::from([
             ("fn + a:Int b:Int -> 0", ok("")),
             ("fn * a:Int b:Int -> 0", ok("")),
-            //todo: should technically error out because 'R cannot be 'P and 'P cannot be 'Q
-            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> g(f(x))", ok("")),
-            ("fn compose f:('P) -> 'Q g:('Q)->'R -> (x: 'P) -> f(g(x))", ok("")),
-            ("fn f x:Int -> *(x 3)", ok("")),
-            ("fn g x:Int -> +(x 2)", ok("")),
-            ("compose(f g)", ok("Function (x:'P) -> f(g(x))")),
-            ("with h = compose(f g) h(7)", ok("27")),
+            (
+                "fn compose f:('P)->'Q g:('Q)->'R -> (x:'P) -> g(f(x))",
+                ok(""),
+            ),
+            (
+                "fn compose f:('P)->'Q g:('Q)->'R -> (x:'P) -> f(g(x))",
+                err("Argument 0 in function 'g' in caller '(x:'P) -> f(g(x))' has type 'Q (bound to 'Q) but 'P (bound to 'P) was provided"),
+            ),
+            //todo: when calling f, g there are shadowing problems!
+            ("fn f2 x:Int -> *(x 3)", ok("")),
+            ("fn g2 x:Int -> +(x 2)", ok("")),
+            ("compose(f2 g2)", ok("Function (x:'P) -> g(f(x))")),
+            ("with h = compose(f2 g2) h(7)", ok("23")),
+            ("with h = compose(g2 f2) h(7)", ok("27")),
+            ("fn f3 x:Float -> \"ok\"", ok("")),
+            ("fn g3 x:Int -> 2.2", ok("")),
+            ("compose(f3 g3)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('Q) -> 'R (bound to ('Q) -> 'R) but (Int) -> Float (bound to (Int) -> Float) was provided")),
+            ("compose(g3 f3)", ok("Function (x:'P) -> g(f(x))")),
+            ("with h = compose(g3 f3) h(2)", ok("\"ok\"")),
+        ]));
+
+        run_tests(&InsertionOrderHashMap::from([
+            (
+                "fn compose f:('Q)->'R g:('P)->'Q -> (x:'P)->f(g(x))",
+                ok(""),
+            ),
+            ("fn f2 x:Int -> 2.2", ok("")),
+            ("fn g2 x:Float -> \"ok\"", ok("")),
+            ("compose(f2 g2)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('P) -> 'Q (bound to ('P) -> 'Q) but (Float) -> String (bound to (Float) -> String) was provided")),
+            ("compose(g2 f2)", ok("Function (x:'P) -> f(g(x))")),
+            ("compose(f2 f2)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('P) -> 'Q (bound to ('P) -> 'Q) but (Int) -> Float (bound to (Int) -> Float) was provided")),
+            ("compose(g2 g2)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('P) -> 'Q (bound to ('P) -> 'Q) but (Float) -> String (bound to (Float) -> String) was provided")),
         ]));
     }
 
