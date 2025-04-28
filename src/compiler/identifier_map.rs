@@ -22,7 +22,7 @@ pub(super) const STRING_ID: IdentifierId = 13;
 pub(super) const TRUE_ID: IdentifierId = 14;
 pub(super) const FALSE_ID: IdentifierId = 15;
 pub(super) const WILDCARD_ID: IdentifierId = 16;
-pub(super) const UNKNOWN_ID: IdentifierId = 17;
+pub(super) const UNDECIDED_ID: IdentifierId = 17;
 pub(super) const FLOAT_ID: IdentifierId = 18;
 pub(super) const ERROR_ID: IdentifierId = 19;
 pub(super) const REPL_ID: IdentifierId = 20;
@@ -66,7 +66,7 @@ impl IdentifierIdMap {
             (Rc::new("String".to_string()), STRING_ID),
             (Rc::new("Bool".to_string()), BOOL_ID),
             (Rc::new("Void".to_string()), VOID_ID),
-            (Rc::new("Unknown".to_string()), UNKNOWN_ID),
+            (Rc::new("Undecided".to_string()), UNDECIDED_ID),
             (Rc::new("true".to_string()), TRUE_ID),
             (Rc::new("false".to_string()), FALSE_ID),
             (Rc::new("List".to_string()), LIST_ID),

@@ -6,7 +6,7 @@ use std::vec;
 use nohash_hasher::IntMap;
 
 use crate::compiler::grammar;
-use crate::compiler::identifier_map::{UNKNOWN_ID, VOID_ID};
+use crate::compiler::identifier_map::{UNDECIDED_ID, VOID_ID};
 use crate::compiler::internal_repr::to_repr;
 use crate::compiler::type_system::{infer_function_type, verify_type_definition};
 use crate::parser::combinators::ParserCombinator;
@@ -121,7 +121,7 @@ impl REPL {
                 (TRUE_ID, Rc::new(Value::Bool(true))),
                 (FALSE_ID, Rc::new(Value::Bool(false))),
                 (VOID_ID, Rc::new(Value::Void)),
-                (UNKNOWN_ID, Rc::new(Value::Unknown)),
+                (UNDECIDED_ID, Rc::new(Value::Undecided)),
             ]));
             let start = Instant::now();
             let expression = result.unwrap();
@@ -207,7 +207,7 @@ impl REPL {
                             }
                         }
                         Value::Void => return Err(format!("Argument is Void")),
-                        Value::Unknown => return Err(format!("Argument is Unknown")),
+                        Value::Undecided => return Err(format!("Argument has undecided type")),
                     }
                 }
                 DestructuringComponent::Destructuring(destructuring) => match arg.as_ref() {
@@ -294,9 +294,9 @@ impl REPL {
                             self.program.var_name(function_id)
                         ))
                     }
-                    Value::Unknown => {
+                    Value::Undecided => {
                         return Err(format!(
-                            "Arg is Unknown in function '{}'",
+                            "Arg has undecided type in function '{}'",
                             self.program.var_name(function_id)
                         ))
                     }
@@ -320,7 +320,7 @@ impl REPL {
                         return Err(format!("Function cannot be matched to Int"))
                     }
                     Value::Void => return Err(format!("Argument is Void")),
-                    Value::Unknown => return Err(format!("Argument is Unknown")),
+                    Value::Undecided => return Err(format!("Argument has undecided type")),
                 },
                 DestructuringComponent::Float(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {
@@ -341,7 +341,7 @@ impl REPL {
                         return Err(format!("Function cannot be matched to Float"))
                     }
                     Value::Void => return Err(format!("Arg is Void")),
-                    Value::Unknown => return Err(format!("Arg is Unknown")),
+                    Value::Undecided => return Err(format!("Arg has undecided type")),
                 },
                 DestructuringComponent::String(pattern_val) => match arg.as_ref() {
                     Value::Typed(id, _, _) => {
@@ -362,7 +362,7 @@ impl REPL {
                         return Err(format!("Function cannot be matched to String"))
                     }
                     Value::Void => return Err(format!("Arg is Void")),
-                    Value::Unknown => return Err(format!("Arg is Unknown")),
+                    Value::Undecided => return Err(format!("Arg has undecided type")),
                 },
             }
         }

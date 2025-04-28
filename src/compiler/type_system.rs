@@ -7,7 +7,7 @@ use nohash_hasher::IntMap;
 
 use super::{
     identifier_map::{
-        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNKNOWN_ID, VOID_ID,
+        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNDECIDED_ID, VOID_ID,
         WILDCARD_ID,
     },
     internal_repr::{
@@ -31,7 +31,7 @@ impl TypeInfo {
         let primitive_types = HashSet::from([INT_ID, STRING_ID, BOOL_ID, VOID_ID, FLOAT_ID]);
         let bool_type = Rc::new(Type::PrimitiveType(BOOL_ID));
         let void_type = Rc::new(Type::PrimitiveType(VOID_ID));
-        let unknown_type = Rc::new(Type::Unknown);
+        let undecided_type = Rc::new(Type::Undecided);
         Self {
             primitive_types,
             user_types: IntMap::default(),
@@ -40,7 +40,7 @@ impl TypeInfo {
                 (TRUE_ID, Rc::clone(&bool_type)),
                 (FALSE_ID, Rc::clone(&bool_type)),
                 (VOID_ID, Rc::clone(&void_type)),
-                (UNKNOWN_ID, Rc::clone(&unknown_type)),
+                (UNDECIDED_ID, Rc::clone(&undecided_type)),
             ]))),
         }
     }
@@ -367,8 +367,9 @@ pub fn infer_expression_type(
             Ok(Rc::clone(&program.types.get(type_id).unwrap().def))
         }
         Expression::FunctionCall(function_call) => {
+            // Recursive call type is left undecided
             if *current_function_id == function_call.id {
-                return Ok(Rc::new(Type::Unknown));
+                return Ok(Rc::new(Type::Undecided));
             }
 
             let function_type = get_identifier_type(
@@ -581,8 +582,8 @@ pub fn infer_function_type(
                     return Err(format!("[1] '{}' doesn't exist", program.var_name(&id)));
                 }
             }
-            Type::Unknown => panic!(
-                "Unknown type is invalid for argument '{}' of function '{}'",
+            Type::Undecided => panic!(
+                "Undecided type is invalid for argument '{}' of function '{}'",
                 argument.identifier, current_function.id
             ),
             Type::FunctionType(_, args, return_type, _) => {

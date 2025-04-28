@@ -10,7 +10,7 @@ use crate::{
 
 use super::{
     grammar::Rules,
-    identifier_map::{IdentifierId, IdentifierIdMap, UNKNOWN_ID},
+    identifier_map::{IdentifierId, IdentifierIdMap, UNDECIDED_ID},
 };
 
 pub(super) type RcType = Rc<Type>;
@@ -28,13 +28,13 @@ pub(super) enum Type {
         RcType,
         Option<Rc<IntMap<IdentifierId, RcType>>>,
     ),
-    Unknown,
+    Undecided,
 }
 
 impl Type {
     pub fn is_unknown(&self) -> bool {
         match self {
-            Type::Unknown => true,
+            Type::Undecided => true,
             _ => false,
         }
     }
@@ -59,7 +59,7 @@ impl Type {
             Type::TypeParameter(id) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::CompositeType(id, _) => Rc::clone(map.get_identifier(id).unwrap()),
             Type::FunctionType(id, _, _, _) => Rc::clone(map.get_identifier(id).unwrap()),
-            Type::Unknown => Rc::new("Unknown".to_string()),
+            Type::Undecided => Rc::new("Undecided".to_string()),
         }
     }
 
@@ -84,7 +84,7 @@ impl Type {
             Type::TypeParameter(id) => *id,
             Type::CompositeType(id, _) => *id,
             Type::FunctionType(id, _, _, _) => *id,
-            Type::Unknown => UNKNOWN_ID,
+            Type::Undecided => UNDECIDED_ID,
         }
     }
 
@@ -103,7 +103,7 @@ impl Type {
             }
             //todo: returns all the type params in inputs and output
             Type::FunctionType(_, _, _, _) => HashSet::new(),
-            Type::Unknown => HashSet::new(),
+            Type::Undecided => HashSet::new(),
         }
     }
 
