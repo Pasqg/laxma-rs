@@ -162,7 +162,7 @@ pub(super) struct Destructuring(
 #[derive(Debug, PartialEq, Clone)]
 pub(super) struct FunctionCall {
     pub(super) id: IdentifierId,
-    pub(super) parameters: Vec<Expression>,
+    pub(super) arguments: Vec<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -408,7 +408,7 @@ pub fn expression_repr(
             }
             Ok(Expression::FunctionCall(FunctionCall {
                 id: identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
-                parameters,
+                arguments: parameters,
             }))
         }
         Some(Rules::TypeConstructor) => {

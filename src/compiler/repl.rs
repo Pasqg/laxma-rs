@@ -415,7 +415,7 @@ impl REPL {
 
         //todo should be static checks
         let expected_arg_num = definition.arguments.len();
-        let actual_arg_num = function_call.parameters.len();
+        let actual_arg_num = function_call.arguments.len();
         if expected_arg_num != actual_arg_num {
             return Err(format!(
                 "Function '{}' expects {} arguments, but {} were provided",
@@ -427,7 +427,7 @@ impl REPL {
 
         let captures = Rc::new(captures);
         let mut values = Vec::new();
-        for param in &function_call.parameters {
+        for param in &function_call.arguments {
             values.push(self.evaluate_expression(caller_id, &captures, &param)?);
         }
         self.evaluate_function_definition(&definition, &values, &captures)
@@ -1000,10 +1000,6 @@ mod tests {
                 "fn compose f:('P)->'Q g:('Q)->'R -> (x:'P) -> g(f(x))",
                 ok(""),
             ),
-            (
-                "fn compose f:('P)->'Q g:('Q)->'R -> (x:'P) -> f(g(x))",
-                err("Argument 0 in function 'g' in caller '(x:'P) -> f(g(x))' has type 'Q (bound to 'Q) but 'P (bound to 'P) was provided"),
-            ),
             //todo: when calling f, g there are shadowing problems!
             ("fn f2 x:Int -> *(x 3)", ok("")),
             ("fn g2 x:Int -> +(x 2)", ok("")),
@@ -1014,7 +1010,20 @@ mod tests {
             ("fn g3 x:Int -> 2.2", ok("")),
             ("compose(f3 g3)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('Q) -> 'R (bound to ('Q) -> 'R) but (Int) -> Float (bound to (Int) -> Float) was provided")),
             ("compose(g3 f3)", ok("Function (x:'P) -> g(f(x))")),
-            ("with h = compose(g3 f3) h(2)", ok("\"ok\"")),
+            ("with h = compose(g3 f3) h(2)", ok("\"ok\""))
+        ]));
+
+        run_tests(&InsertionOrderHashMap::from([
+            //todo: should error out
+            (
+                "fn compose f:('P)->'Q g:('Q)->'R -> (x:'P) -> f(g(x))",
+                ok(""),
+            ),
+            ("fn f3 x:Float -> \"ok\"", ok("")),
+            ("fn g3 x:Int -> 2.2", ok("")),
+            ("compose(f3 g3)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('Q) -> 'R (bound to ('Q) -> 'R) but (Int) -> Float (bound to (Int) -> Float) was provided")),
+            //todo: should error out
+            ("compose(g3 f3)", ok("Function (x:'P) -> f(g(x))")),
         ]));
 
         run_tests(&InsertionOrderHashMap::from([

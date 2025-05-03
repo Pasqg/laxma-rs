@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    f32::consts::E,
     rc::Rc,
 };
 
@@ -8,8 +7,8 @@ use nohash_hasher::IntMap;
 
 use super::{
     identifier_map::{
-        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNDECIDED_ID,
-        VOID_ID, WILDCARD_ID,
+        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID,
+        UNDECIDED_ID, VOID_ID, WILDCARD_ID,
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type,
@@ -299,6 +298,9 @@ pub fn verify_type_definition(
     Ok(())
 }
 
+//value or variable -> return type of value or variable
+//function call -> find abstract type of function, substitute arguments one by one until it either fails or it's fully
+//composite type constructor -> treat constructor as function
 pub fn infer_expression_type(
     program: &mut Program,
     type_info: &TypeInfo,
@@ -307,6 +309,132 @@ pub fn infer_expression_type(
     expression: &Expression,
 ) -> Result<RcType, String> {
     match expression {
+        Expression::Identifier(id) => get_identifier_type(
+            program,
+            type_info,
+            identifier_types,
+            current_function_id,
+            id,
+        ),
+        Expression::Integer(_) => Ok(Rc::new(Type::PrimitiveType(INT_ID))),
+        Expression::String(_) => Ok(Rc::new(Type::PrimitiveType(STRING_ID))),
+        Expression::Float(_) => Ok(Rc::new(Type::PrimitiveType(FLOAT_ID))),
+        Expression::FunctionCall(function_call) => {
+            // Recursive call type is left undecided
+            if *current_function_id == function_call.id {
+                return Ok(Rc::new(Type::Undecided));
+            }
+
+            let function_type = get_identifier_type(
+                program,
+                type_info,
+                identifier_types,
+                current_function_id,
+                &function_call.id,
+            );
+            if function_type.is_ok() {
+                let function_type = function_type.unwrap();
+                match function_type.as_ref() {
+                    Type::FunctionType(_, arguments, return_type, captures) => {
+                        let provided_types = &function_call.arguments;
+                        let parameter_len = arguments.len();
+                        if provided_types.len() != parameter_len {
+                            return Err(format!(
+                                "Function '{}' in caller '{}' expects {} arguments but {} were provided",
+                                program.var_name(&function_call.id),
+                                program.var_name(current_function_id),
+                                arguments.len(),
+                                provided_types.len()
+                            ));
+                        }
+
+                        /*
+                        let mut substituted_type =
+                        for i in 0..parameter_len {
+                            substituted_type = substitute(arguments[i], provided_types[i], substituted_type);
+                        }
+
+                        let return_type = substitute(arguments[i], provided_types[i], substituted_type);*/
+
+                        return concretize_function_type(
+                            program,
+                            type_info,
+                            if captures.is_none() {
+                                identifier_types
+                            } else {
+                                captures.as_ref().unwrap()
+                            },
+                            current_function_id,
+                            &function_call.id,
+                            &function_type,
+                            &arguments,
+                            &function_call.arguments,
+                        );
+                    }
+                    _ => {
+                        return Err(format!(
+                            "'{}' with type '{} is not callable",
+                            program.var_name(&function_call.id),
+                            program.var_name(&function_type.id())
+                        ));
+                    }
+                }
+            }
+
+            let function_type = type_info.function_types.get(&function_call.id);
+            if function_type.is_some() {
+                let function_type = function_type.unwrap();
+
+                let function_definition = program.functions.get(&function_call.id);
+                if function_definition.is_some() {
+                    let function_definition = Rc::clone(function_definition.unwrap());
+                    return concretize_function_type(
+                        program,
+                        type_info,
+                        identifier_types,
+                        current_function_id,
+                        &function_call.id,
+                        function_type,
+                        &function_definition
+                            .arguments
+                            .iter()
+                            .map(|arg| Rc::clone(&arg.typing))
+                            .collect(),
+                        &function_call.arguments,
+                    );
+                } else {
+                    match function_type.as_ref() {
+                        Type::FunctionType(_, inputs, _, captures) => {
+                            return concretize_function_type(
+                                program,
+                                type_info,
+                                if captures.is_none() {
+                                    identifier_types
+                                } else {
+                                    captures.as_ref().unwrap()
+                                },
+                                current_function_id,
+                                &function_call.id,
+                                function_type,
+                                &inputs,
+                                &function_call.arguments,
+                            );
+                        }
+                        _ => panic!("BUG"),
+                    }
+                }
+            }
+
+            Err(format!(
+                "Undefined identifier '{}' in function '{}', known '{:?}'",
+                program.var_name(&function_call.id),
+                program.var_name(current_function_id),
+                identifier_types
+                    .iter()
+                    .map(|(k, v)| (program.var_name(k), v.full_repr(&program.identifier_id_map)))
+                    .collect::<Vec<(&Rc<String>, Rc<String>)>>()
+            ))
+        }
         Expression::TypeConstructor(type_id, variant, expressions) => {
             let type_variant = {
                 let result = program.types.get(type_id);
@@ -384,102 +512,6 @@ pub fn infer_expression_type(
             }
 
             Ok(Rc::clone(&program.types.get(type_id).unwrap().def))
-        }
-        Expression::FunctionCall(function_call) => {
-            // Recursive call type is left undecided
-            if *current_function_id == function_call.id {
-                return Ok(Rc::new(Type::Undecided));
-            }
-
-            let function_type = get_identifier_type(
-                program,
-                type_info,
-                identifier_types,
-                current_function_id,
-                &function_call.id,
-            );
-            if function_type.is_ok() {
-                let function_type = function_type.unwrap();
-                match function_type.as_ref() {
-                    Type::FunctionType(_, inputs, _, captures) => {
-                        return concretize_function_type(
-                            program,
-                            type_info,
-                            if captures.is_none() {
-                                identifier_types
-                            } else {
-                                captures.as_ref().unwrap()
-                            },
-                            current_function_id,
-                            &function_call.id,
-                            &function_type,
-                            &inputs,
-                            &function_call.parameters,
-                        );
-                    }
-                    _ => {
-                        return Err(format!(
-                            "'{}' with type '{} is not callable",
-                            program.var_name(&function_call.id),
-                            program.var_name(&function_type.id())
-                        ));
-                    }
-                }
-            }
-
-            let function_type = type_info.function_types.get(&function_call.id);
-            if function_type.is_some() {
-                let function_type = function_type.unwrap();
-
-                let function_definition = program.functions.get(&function_call.id);
-                if function_definition.is_some() {
-                    let function_definition = Rc::clone(function_definition.unwrap());
-                    return concretize_function_type(
-                        program,
-                        type_info,
-                        identifier_types,
-                        current_function_id,
-                        &function_call.id,
-                        function_type,
-                        &function_definition
-                            .arguments
-                            .iter()
-                            .map(|arg| Rc::clone(&arg.typing))
-                            .collect(),
-                        &function_call.parameters,
-                    );
-                } else {
-                    match function_type.as_ref() {
-                        Type::FunctionType(_, inputs, _, captures) => {
-                            return concretize_function_type(
-                                program,
-                                type_info,
-                                if captures.is_none() {
-                                    identifier_types
-                                } else {
-                                    captures.as_ref().unwrap()
-                                },
-                                current_function_id,
-                                &function_call.id,
-                                function_type,
-                                &inputs,
-                                &function_call.parameters,
-                            );
-                        }
-                        _ => panic!("BUG"),
-                    }
-                }
-            }
-
-            Err(format!(
-                "Undefined identifier '{}' in function '{}', known '{:?}'",
-                program.var_name(&function_call.id),
-                program.var_name(current_function_id),
-                identifier_types
-                    .iter()
-                    .map(|(k, v)| (program.var_name(k), v.full_repr(&program.identifier_id_map)))
-                    .collect::<Vec<(&Rc<String>, Rc<String>)>>()
-            ))
         }
         Expression::WithBlock(items, expression) => {
             let mut inner_types = identifier_types.as_ref().clone();
@@ -560,16 +592,6 @@ pub fn infer_expression_type(
 
             Ok(true_type)
         }
-        Expression::Identifier(id) => get_identifier_type(
-            program,
-            type_info,
-            identifier_types,
-            current_function_id,
-            id,
-        ),
-        Expression::Integer(_) => Ok(Rc::new(Type::PrimitiveType(INT_ID))),
-        Expression::String(_) => Ok(Rc::new(Type::PrimitiveType(STRING_ID))),
-        Expression::Float(_) => Ok(Rc::new(Type::PrimitiveType(FLOAT_ID))),
         Expression::LambdaExpression(function_definition) => infer_function_type(
             program,
             type_info,
@@ -703,14 +725,21 @@ pub fn infer_function_type(
                         match variant.as_ref() {
                             TypeVariant::Constant(name) => {
                                 if destructuring.1.len() != 0 {
-                                    return Err(format!("Variant '{name}' for type '{}' expects 0 components but got {} in function '{}'", program.var_name(&arg.typing.id()), destructuring.1.len(),
-                                    program.var_name(&function_id)));
+                                    return Err(format!("Variant '{name}' for type '{}' expects 0 components but got {} in function '{}'",
+                                            program.var_name(&arg.typing.id()),
+                                            destructuring.1.len(),
+                                            program.var_name(&function_id)
+                                        ));
                                 }
                             }
                             TypeVariant::Cartesian(name, component_types) => {
                                 if component_types.len() != destructuring.1.len() {
-                                    return Err(format!("Variant '{name}' for type '{}' expects {} components but got {} in function '{}'", program.var_name(&arg.typing.id()), component_types.len(), destructuring.1.len(),
-                                    program.var_name(&function_id)));
+                                    return Err(format!("Variant '{name}' for type '{}' expects {} components but got {} in function '{}'",
+                                            program.var_name(&arg.typing.id()),
+                                            component_types.len(),
+                                            destructuring.1.len(),
+                                            program.var_name(&function_id)
+                                        ));
                                 }
 
                                 let mut bindings = TypeParameterBindings::new();
