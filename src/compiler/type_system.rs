@@ -191,7 +191,7 @@ fn get_identifier_type(
     let function_definition = program.functions.get(id);
     if function_definition.is_some() {
         let function_definition = Rc::clone(&function_definition.unwrap());
-        let function_type = infer_function_type(
+        let function_type = infer_function_definition_type(
             program,
             type_info,
             &function_definition,
@@ -240,7 +240,7 @@ fn concretize_function_type(
     for i in 0..parameters.len() {
         let arg_expr = &parameters[i];
         let provided_type: Rc<Type> =
-            infer_expression_type(program, type_info, identifier_types, caller_id, arg_expr)?;
+            infer_expression_type(arg_expr, program, type_info, identifier_types, caller_id)?;
 
         let arg_type = &arguments[i];
         let concretised_arg_type = type_parameters_bindings.concretize(arg_type);
@@ -302,11 +302,11 @@ pub fn verify_type_definition(
 //function call -> find abstract type of function, substitute arguments one by one until it either fails or it's fully
 //composite type constructor -> treat constructor as function
 pub fn infer_expression_type(
+    expression: &Expression,
     program: &mut Program,
     type_info: &TypeInfo,
     identifier_types: &Rc<IntMap<IdentifierId, RcType>>,
     current_function_id: &IdentifierId,
-    expression: &Expression,
 ) -> Result<RcType, String> {
     match expression {
         Expression::Identifier(id) => get_identifier_type(
@@ -481,11 +481,11 @@ pub fn infer_expression_type(
                         let mut type_parameter_bindings = TypeParameterBindings::new();
                         for i in 0..expressions.len() {
                             let expression_type = infer_expression_type(
+                                &expressions[i],
                                 program,
                                 type_info,
                                 identifier_types,
                                 current_function_id,
-                                &expressions[i],
                             )?;
 
                             if !type_parameter_bindings.is_subtype(&expression_type, &items[i]) {
@@ -517,29 +517,29 @@ pub fn infer_expression_type(
             let mut inner_types = identifier_types.as_ref().clone();
             for (id, expr) in items {
                 let result = infer_expression_type(
+                    expr,
                     program,
                     type_info,
                     &Rc::new(inner_types.clone()),
                     current_function_id,
-                    expr,
                 )?;
                 inner_types.insert(*id, Rc::clone(&result));
             }
             infer_expression_type(
+                expression.as_ref(),
                 program,
                 type_info,
                 &Rc::new(inner_types),
                 current_function_id,
-                expression.as_ref(),
             )
         }
         Expression::If(condition, when_true, when_false) => {
             let result = infer_expression_type(
+                condition,
                 program,
                 type_info,
                 identifier_types,
                 current_function_id,
-                condition,
             )?;
 
             match result.as_ref() {
@@ -553,22 +553,22 @@ pub fn infer_expression_type(
             }
 
             let true_type = infer_expression_type(
+                &when_true,
                 program,
                 type_info,
                 identifier_types,
                 current_function_id,
-                &when_true,
             )?;
             let false_type = infer_expression_type(
+                &when_false,
                 program,
                 type_info,
                 identifier_types,
                 current_function_id,
-                &when_false,
             )?;
 
-            let is_true_unknown = true_type.is_unknown();
-            let is_false_unknown = false_type.is_unknown();
+            let is_true_unknown = true_type.is_undecided();
+            let is_false_unknown = false_type.is_undecided();
             if is_true_unknown && is_false_unknown {
                 return Err(format!(
                     "Could not infer return types of if expression in function '{}'",
@@ -592,7 +592,7 @@ pub fn infer_expression_type(
 
             Ok(true_type)
         }
-        Expression::LambdaExpression(function_definition) => infer_function_type(
+        Expression::LambdaExpression(function_definition) => infer_function_definition_type(
             program,
             type_info,
             &function_definition,
@@ -601,7 +601,7 @@ pub fn infer_expression_type(
     }
 }
 
-pub fn infer_function_type(
+pub fn infer_function_definition_type(
     program: &mut Program,
     type_info: &TypeInfo,
     current_function: &FunctionDefinition,
@@ -660,14 +660,14 @@ pub fn infer_function_type(
         .collect();
     if current_function.is_not_pattern_matched() {
         let return_type = infer_expression_type(
+            &current_function.bodies[0].1,
             program,
             type_info,
             &arg_types,
             &current_function.id,
-            &current_function.bodies[0].1,
         )?;
 
-        if return_type.is_unknown() {
+        if return_type.is_undecided() {
             return Err(format!(
                 "Cannot infer return type of function {}",
                 program.var_name(function_id),
@@ -776,11 +776,11 @@ pub fn infer_function_type(
             }
 
             let branch_type = infer_expression_type(
+                &expression,
                 program,
                 type_info,
                 &Rc::new(identifier_types),
                 &current_function.id,
-                &expression,
             )?;
 
             if previous_branch_type.is_some()
@@ -813,7 +813,7 @@ pub fn infer_function_type(
                     &type_parameters_bindings.concretize(
                         &branch_types
                             .into_iter()
-                            .filter(|t| !t.is_unknown())
+                            .filter(|t| !t.is_undecided())
                             .next()
                             .unwrap(),
                     ),

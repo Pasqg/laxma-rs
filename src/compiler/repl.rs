@@ -22,7 +22,7 @@ use super::internal_repr::{
     Program,
 };
 use super::lexer::Lexer;
-use super::type_system::{infer_expression_type, TypeInfo};
+use super::type_system::{infer_expression_type, TypeInfo, infer_function_definition_type, verify_type_definition};
 use super::utils::to_int_map;
 use super::value::{RcValue, Value};
 
@@ -98,7 +98,7 @@ impl REPL {
             for key in functions.keys() {
                 let (id, definition) = (key, functions.get(key.as_ref()).unwrap());
                 let function_type =
-                    infer_function_type(&mut self.program, &self.type_info, &definition, None)?;
+                    infer_function_definition_type(&mut self.program, &self.type_info, &definition, None)?;
 
                 println!(
                     "Defined function {}: {}",
@@ -126,11 +126,11 @@ impl REPL {
             let start = Instant::now();
             let expression = result.unwrap();
             let expr_type = infer_expression_type(
+                &expression,
                 &mut self.program,
                 &self.type_info,
                 &Rc::clone(&self.type_info.constant_types),
                 &REPL_ID,
-                &expression,
             )?;
             let result = self.evaluate_expression(&REPL_ID, &Rc::new(values), &expression)?;
 

@@ -32,7 +32,7 @@ pub(super) enum Type {
 }
 
 impl Type {
-    pub fn is_unknown(&self) -> bool {
+    pub fn is_undecided(&self) -> bool {
         match self {
             Type::Undecided => true,
             _ => false,
