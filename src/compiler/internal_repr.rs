@@ -74,6 +74,15 @@ impl Type {
                     .collect::<Vec<String>>()
                     .join(", ")
             )),
+            Type::FunctionType(_, args_t, return_t, _) => Rc::new(format!(
+                "({}) -> {}",
+                args_t
+                    .iter()
+                    .map(|t| t.full_repr(map).to_string())
+                    .collect::<Vec<String>>()
+                    .join(", "),
+                return_t.full_repr(map),
+            )),
             _ => self.name(map),
         }
     }
