@@ -7,8 +7,8 @@ use nohash_hasher::IntMap;
 
 use super::{
     identifier_map::{
-        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID,
-        UNDECIDED_ID, VOID_ID, WILDCARD_ID,
+        IdentifierId, BOOL_ID, FALSE_ID, FLOAT_ID, INT_ID, STRING_ID, TRUE_ID, UNDECIDED_ID,
+        VOID_ID, WILDCARD_ID,
     },
     internal_repr::{
         DestructuringComponent, Expression, FunctionDefinition, Program, RcType, Type,
@@ -69,25 +69,41 @@ impl TypeParameterBindings {
 
     fn concretize(&self, _type: &RcType) -> RcType {
         match _type.as_ref() {
-            Type::FunctionType(id, inputs, outputs, captures) => Rc::new(Type::FunctionType(
+            Type::FunctionType(id, arg_types, return_type, captures) => Rc::new(Type::FunctionType(
                 *id,
-                inputs.iter().map(|t| self.concretize(t)).collect(),
-                self.concretize(outputs),
+                arg_types.iter().map(|t| self.concretize(t)).collect(),
+                self.concretize(return_type),
                 captures.clone(),
             )),
-            Type::UnboundTypeVariable(id) => {
-                let concrete = self.bindings.get(id);
-                if concrete.is_none() {
-                    return Rc::clone(_type);
-                }
-                Rc::clone(concrete.unwrap())
-            }
             Type::CompositeType(id, items) => Rc::new(Type::CompositeType(
                 *id,
                 items.iter().map(|t| self.concretize(t)).collect(),
             )),
-            _ => Rc::clone(_type),
+            _ => self.find_most_concrete(_type),
         }
+    }
+
+    fn find_most_concrete(&self, type_t: &RcType) -> RcType {
+        let mut substitutions = vec![type_t];
+        let mut stop = false;
+        let mut visited = HashSet::from([type_t.id()]);
+        while !stop {
+            let n = substitutions.len();
+            let sub = self.bindings.get(&substitutions[n - 1].id());
+            if sub.is_none() {
+                stop = true;
+            } else {
+                let t = sub.unwrap();
+                substitutions.push(t);
+                if visited.contains(&t.id()) {
+                    //todo: should probably disallow pushing itself in bindings...
+                    stop = true;
+                    println!("cycle break");
+                }
+                visited.insert(t.id());
+            }
+        }
+        Rc::clone(substitutions[substitutions.len() - 1])
     }
 
     fn is_subtype(&mut self, concrete_t: &RcType, abstract_t: &RcType) -> bool {
@@ -100,42 +116,45 @@ impl TypeParameterBindings {
                     return true;
                 }
 
-                let abstract_binding = self.bindings.get(abstract_id);
-                let concrete_binding = self.bindings.get(concrete_id);
-                if abstract_binding.is_none() && concrete_binding.is_none() {
-                    return false;
-                }
-
-                if abstract_binding.is_some() && concrete_binding.is_some() {
-                    return abstract_binding.unwrap().id() == concrete_binding.unwrap().id();
-                }
-
-                if abstract_binding.is_none() {
-                    self.bindings
-                        .insert(abstract_t.id(), Rc::clone(concrete_binding.unwrap()));
+                let abstract_binding = self.find_most_concrete(&abstract_t);
+                let concrete_binding = self.find_most_concrete(&concrete_t);
+                if &abstract_binding == abstract_t && &concrete_binding == concrete_t {
+                    self.bindings.insert(*abstract_id, Rc::clone(concrete_t));
                     return true;
                 }
 
-                if concrete_binding.is_none() {
-                    self.bindings
-                        .insert(concrete_t.id(), Rc::clone(abstract_binding.unwrap()));
+                if &abstract_binding != abstract_t && &concrete_binding != concrete_t {
+                    return abstract_binding.id() == concrete_binding.id();
+                }
+
+                if &abstract_binding == abstract_t {
+                    self.bindings.insert(abstract_t.id(), Rc::clone(concrete_t));
+                    return true;
+                }
+
+                if &concrete_binding == concrete_t {
+                    if concrete_binding != abstract_binding {
+                        self.bindings
+                            .insert(concrete_t.id(), Rc::clone(&abstract_binding));
+                    }
                     return true;
                 }
 
                 false
             }
             (Type::UnboundTypeVariable(_), _) => {
-                let binding = self.bindings.get(&concrete_t.id());
-                if binding.is_some() {
-                    return binding.unwrap().id() == abstract_t.id();
+                let binding = self.find_most_concrete(&concrete_t);
+                if &binding != concrete_t {
+                    return binding.id() == abstract_t.id();
                 }
+                //todo: no? it's used as surrogate for unification, fix up in pattern matching comparison
                 self.bindings.insert(concrete_t.id(), Rc::clone(abstract_t));
                 true
             }
             (_, Type::UnboundTypeVariable(_)) => {
-                let binding = self.bindings.get(&abstract_t.id());
-                if binding.is_some() {
-                    return binding.unwrap().id() == concrete_t.id();
+                let binding = self.find_most_concrete(&abstract_t);
+                if &binding != abstract_t && self.is_subtype(concrete_t, &binding) {
+                    return true;
                 }
                 self.bindings.insert(abstract_t.id(), Rc::clone(concrete_t));
                 true
@@ -226,7 +245,6 @@ fn concretize_function_type(
     arguments: &Vec<RcType>,
     parameters: &Vec<Expression>,
 ) -> Result<RcType, String> {
-    let mut type_parameters_bindings = TypeParameterBindings::new();
     if parameters.len() != arguments.len() {
         return Err(format!(
             "Function '{}' in caller '{}' expects {} arguments but {} were provided",
@@ -237,34 +255,40 @@ fn concretize_function_type(
         ));
     }
 
-    for i in 0..parameters.len() {
-        let arg_expr = &parameters[i];
-        let provided_type: Rc<Type> =
-            infer_expression_type(arg_expr, program, type_info, identifier_types, caller_id)?;
+    let mut type_parameters_bindings = TypeParameterBindings::new();
+    match function_type.as_ref() {
+        Type::FunctionType(_, arg_types, _, _) => {
+            for i in 0..parameters.len() {
+                let arg_expr = &parameters[i];
+                let provided_type: Rc<Type> = infer_expression_type(
+                    arg_expr,
+                    program,
+                    type_info,
+                    identifier_types,
+                    caller_id,
+                )?;
 
-        let arg_type = &arguments[i];
-        let concretised_arg_type = type_parameters_bindings.concretize(arg_type);
-        if !type_parameters_bindings.is_subtype(&provided_type, &concretised_arg_type) {
-            return Err(format!(
-                "Argument {} in function '{}' in caller '{}' has type {} (bound to {}) but {} (bound to {}) was provided",
-                i,
-                program.var_name(function_id),
-                program.var_name(caller_id),
-                type_parameters_bindings
-                    .concretize(arg_type)
-                    .full_repr(&program.identifier_id_map),
-                arg_type.full_repr(&program.identifier_id_map),
-                type_parameters_bindings
-                    .concretize(&provided_type)
-                    .full_repr(&program.identifier_id_map),
-                provided_type.full_repr(&program.identifier_id_map),
-            ));
+                let arg_type = &arg_types[i];
+                if !type_parameters_bindings.is_subtype(&provided_type, &arg_type) {
+                    return Err(format!(
+                        "Argument {i} in function '{}' in caller '{}' has type {} (bound to {}) but {} (bound to {}) was provided",
+                        program.var_name(function_id),
+                        program.var_name(caller_id),
+                        type_parameters_bindings
+                            .concretize(arg_type)
+                            .full_repr(&program.identifier_id_map),
+                        arg_type.full_repr(&program.identifier_id_map),
+                        type_parameters_bindings
+                            .concretize(&provided_type)
+                            .full_repr(&program.identifier_id_map),
+                        provided_type.full_repr(&program.identifier_id_map),
+                    ));
+                }
+            }
         }
+        _ => panic!("Bug! Bug!"),
     }
-
-    Ok(type_parameters_bindings
-        .concretize(function_type)
-        .as_return_type())
+    Ok(type_parameters_bindings.concretize(&function_type.as_return_type()))
 }
 
 pub fn verify_type_definition(
@@ -347,14 +371,6 @@ pub fn infer_expression_type(
                                 provided_types.len()
                             ));
                         }
-
-                        /*
-                        let mut substituted_type =
-                        for i in 0..parameter_len {
-                            substituted_type = substitute(arguments[i], provided_types[i], substituted_type);
-                        }
-
-                        let return_type = substitute(arguments[i], provided_types[i], substituted_type);*/
 
                         return concretize_function_type(
                             program,
@@ -448,11 +464,11 @@ pub fn infer_expression_type(
 
                 let definition = result.unwrap();
 
-                let type_variant = definition.variants.get(variant);
+                let type_variant = definition.variants.get(variant_id);
                 if type_variant.is_none() {
                     return Err(format!(
                         "Undefined variant '{}' of type '{}' in function '{}'",
-                        program.var_name(variant),
+                        program.var_name(variant_id),
                         program.var_name(type_id),
                         program.var_name(current_function_id)
                     ));
@@ -465,7 +481,7 @@ pub fn infer_expression_type(
                 };
                 if arg_num != expressions.len() {
                     return Err(format!("Variant '{}' of type '{}' expects {arg_num} arguments but constructor provided {}",
-                    program.var_name(variant),
+                    program.var_name(variant_id),
                     program.var_name(type_id),
                     expressions.len()));
                 }
@@ -490,13 +506,13 @@ pub fn infer_expression_type(
 
                             if !type_parameter_bindings.is_subtype(&expression_type, &items[i]) {
                                 return Err(format!(
-                                    "Expecting '{}' in constructor for {}::{variant} but got '{}'",
-                                    &type_parameter_bindings
-                                        .concretize(&items[i])
+                                    "Expecting {} in constructor for {}::{variant} but got {}",
+                                    type_parameter_bindings
+                                        .find_most_concrete(&items[i])
                                         .full_repr(&program.identifier_id_map),
                                     program.var_name(type_id),
                                     type_parameter_bindings
-                                        .concretize(&expression_type)
+                                        .find_most_concrete(&expression_type)
                                         .full_repr(&program.identifier_id_map),
                                 ));
                             }

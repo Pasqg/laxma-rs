@@ -858,28 +858,28 @@ mod tests {
             ("type A -> A Int", ok("")),
             (
                 "A::A(0.0)",
-                err("Expecting 'Int' in constructor for A::A but got 'Float'"),
+                err("Expecting Int in constructor for A::A but got Float"),
             ),
         ]));
         run_tests(&InsertionOrderHashMap::from([
             ("type A -> A Float", ok("")),
             (
                 "A::A(0)",
-                err("Expecting 'Float' in constructor for A::A but got 'Int'"),
+                err("Expecting Float in constructor for A::A but got Int"),
             ),
         ]));
         run_tests(&InsertionOrderHashMap::from([
             ("type A -> A String", ok("")),
             (
                 "A::A(0)",
-                err("Expecting 'String' in constructor for A::A but got 'Int'"),
+                err("Expecting String in constructor for A::A but got Int"),
             ),
         ]));
         run_tests(&InsertionOrderHashMap::from([
             ("type A -> A Int String", ok("")),
             (
                 "A::A(0 0)",
-                err("Expecting 'String' in constructor for A::A but got 'Int'"),
+                err("Expecting String in constructor for A::A but got Int"),
             ),
         ]));
     }
