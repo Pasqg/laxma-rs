@@ -128,11 +128,15 @@ impl TypeParameterBindings {
                 }
 
                 if &abstract_binding == abstract_t {
-                    self.bindings.insert(abstract_t.id(), Rc::clone(concrete_t));
+                    // prevents cycles
+                    if concrete_binding != abstract_binding {
+                        self.bindings.insert(abstract_t.id(), Rc::clone(concrete_t));
+                    }
                     return true;
                 }
 
                 if &concrete_binding == concrete_t {
+                    // prevents cycles
                     if concrete_binding != abstract_binding {
                         self.bindings
                             .insert(concrete_t.id(), Rc::clone(&abstract_binding));
@@ -142,7 +146,11 @@ impl TypeParameterBindings {
 
                 false
             }
-            (Type::UnboundTypeVariable(_), _) => {
+            (Type::UnboundTypeVariable(id), _) => {
+                if abstract_t.type_parameters().contains(id) {
+                    return false;
+                }
+
                 let binding = self.find_most_concrete(&concrete_t);
                 if &binding != concrete_t {
                     return binding.id() == abstract_t.id();
@@ -151,7 +159,10 @@ impl TypeParameterBindings {
                 self.bindings.insert(concrete_t.id(), Rc::clone(abstract_t));
                 true
             }
-            (_, Type::UnboundTypeVariable(_)) => {
+            (_, Type::UnboundTypeVariable(id)) => {
+                if concrete_t.type_parameters().contains(id) {
+                    return false;
+                }
                 let binding = self.find_most_concrete(&abstract_t);
                 if &binding != abstract_t && self.is_subtype(concrete_t, &binding) {
                     return true;
