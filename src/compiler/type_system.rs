@@ -248,39 +248,28 @@ fn get_identifier_type(
 
 fn concretize_function_type(
     program: &mut Program,
-    type_info: &TypeInfo,
     identifier_types: &Rc<IntMap<IdentifierId, RcType>>,
     caller_id: &IdentifierId,
     function_id: &IdentifierId,
     function_type: &RcType,
-    arguments: &Vec<RcType>,
-    parameters: &Vec<Expression>,
+    parameters: &Vec<RcType>,
 ) -> Result<RcType, String> {
-    if parameters.len() != arguments.len() {
-        return Err(format!(
-            "Function '{}' in caller '{}' expects {} arguments but {} were provided",
-            program.var_name(function_id),
-            program.var_name(caller_id),
-            arguments.len(),
-            parameters.len()
-        ));
-    }
-
     let mut type_parameters_bindings = TypeParameterBindings::new();
     match function_type.as_ref() {
         Type::FunctionType(_, arg_types, _, _) => {
-            for i in 0..parameters.len() {
-                let arg_expr = &parameters[i];
-                let provided_type: Rc<Type> = infer_expression_type(
-                    arg_expr,
-                    program,
-                    type_info,
-                    identifier_types,
-                    caller_id,
-                )?;
+            if arg_types.len() != parameters.len() {
+                return Err(format!(
+                    "Function '{}' in caller '{}' expects {} arguments but {} were provided",
+                    program.var_name(function_id),
+                    program.var_name(caller_id),
+                    arg_types.len(),
+                    parameters.len()
+                ));
+            }
 
+            for i in 0..parameters.len() {
                 let arg_type = &arg_types[i];
-                if !type_parameters_bindings.is_subtype(&provided_type, &arg_type) {
+                if !type_parameters_bindings.is_subtype(&parameters[i], &arg_type) {
                     return Err(format!(
                         "Argument {i} in function '{}' in caller '{}' has type {} (bound to {}) but {} (bound to {}) was provided",
                         program.var_name(function_id),
@@ -290,9 +279,9 @@ fn concretize_function_type(
                             .full_repr(&program.identifier_id_map),
                         arg_type.full_repr(&program.identifier_id_map),
                         type_parameters_bindings
-                            .concretize(&provided_type)
+                            .concretize(&parameters[i])
                             .full_repr(&program.identifier_id_map),
-                        provided_type.full_repr(&program.identifier_id_map),
+                        parameters[i].full_repr(&program.identifier_id_map),
                     ));
                 }
             }
@@ -360,6 +349,14 @@ pub fn infer_expression_type(
                 return Ok(Rc::new(Type::Undecided));
             }
 
+            // These must be calculate here to avoid scope/shadowing issues (rather than in nested functions)
+            // todo: ideally we don't need to calculate all the args when there is another error (such as args.len != params.len)
+            let mut arg_types = Vec::new();
+            for expr in &function_call.arguments {
+                let arg_t = infer_expression_type(expr, program, type_info, identifier_types, current_function_id)?;
+                arg_types.push(arg_t);
+            }
+
             let function_type = get_identifier_type(
                 program,
                 type_info,
@@ -385,7 +382,6 @@ pub fn infer_expression_type(
 
                         return concretize_function_type(
                             program,
-                            type_info,
                             if captures.is_none() {
                                 identifier_types
                             } else {
@@ -394,8 +390,7 @@ pub fn infer_expression_type(
                             current_function_id,
                             &function_call.id,
                             &function_type,
-                            &arguments,
-                            &function_call.arguments,
+                            &arg_types,
                         );
                     }
                     _ => {
@@ -412,29 +407,22 @@ pub fn infer_expression_type(
             if function_type.is_some() {
                 let function_type = function_type.unwrap();
 
+                //todo: unnecessary if?
                 let function_definition = program.functions.get(&function_call.id);
                 if function_definition.is_some() {
-                    let function_definition = Rc::clone(function_definition.unwrap());
                     return concretize_function_type(
                         program,
-                        type_info,
                         identifier_types,
                         current_function_id,
                         &function_call.id,
                         function_type,
-                        &function_definition
-                            .arguments
-                            .iter()
-                            .map(|arg| Rc::clone(&arg.typing))
-                            .collect(),
-                        &function_call.arguments,
+                        &arg_types
                     );
                 } else {
                     match function_type.as_ref() {
-                        Type::FunctionType(_, inputs, _, captures) => {
+                        Type::FunctionType(_, _, _, captures) => {
                             return concretize_function_type(
                                 program,
-                                type_info,
                                 if captures.is_none() {
                                     identifier_types
                                 } else {
@@ -443,8 +431,7 @@ pub fn infer_expression_type(
                                 current_function_id,
                                 &function_call.id,
                                 function_type,
-                                &inputs,
-                                &function_call.arguments,
+                                &arg_types,
                             );
                         }
                         _ => panic!("BUG"),
