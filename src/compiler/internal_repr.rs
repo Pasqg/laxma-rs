@@ -110,8 +110,18 @@ impl Type {
                 }
                 parameters
             }
-            //todo: returns all the type params in inputs and output
-            Type::FunctionType(_, _, _, _) => HashSet::new(),
+            Type::FunctionType(_, args, ret, _) => {
+                let mut parameters = HashSet::new();
+                for t in args {
+                    for parameter in t.type_parameters() {
+                        parameters.insert(parameter);
+                    }
+                }
+                for parameter in ret.type_parameters() {
+                    parameters.insert(parameter);
+                }
+                parameters
+            }
             Type::Undecided => HashSet::new(),
         }
     }
