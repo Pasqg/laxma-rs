@@ -70,7 +70,7 @@ impl Type {
                 map.get_identifier(&id).unwrap(),
                 items
                     .iter()
-                    .map(|t| map.get_identifier(&t.id()).unwrap().to_string())
+                    .map(|t| t.full_repr(map).to_string())
                     .collect::<Vec<String>>()
                     .join(", ")
             )),

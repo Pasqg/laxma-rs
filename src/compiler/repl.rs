@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use std::vec;
@@ -8,7 +8,6 @@ use nohash_hasher::IntMap;
 use crate::compiler::grammar;
 use crate::compiler::identifier_map::{UNDECIDED_ID, VOID_ID};
 use crate::compiler::internal_repr::to_repr;
-use crate::compiler::type_system::{infer_function_type, verify_type_definition};
 use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
@@ -22,7 +21,9 @@ use super::internal_repr::{
     Program,
 };
 use super::lexer::Lexer;
-use super::type_system::{infer_expression_type, TypeInfo, infer_function_definition_type, verify_type_definition};
+use super::type_system::{
+    infer_expression_type, infer_function_definition_type, verify_type_definition, TypeInfo,
+};
 use super::utils::to_int_map;
 use super::value::{RcValue, Value};
 
@@ -97,8 +98,12 @@ impl REPL {
 
             for key in functions.keys() {
                 let (id, definition) = (key, functions.get(key.as_ref()).unwrap());
-                let function_type =
-                    infer_function_definition_type(&mut self.program, &self.type_info, &definition, None)?;
+                let function_type = infer_function_definition_type(
+                    &mut self.program,
+                    &self.type_info,
+                    &definition,
+                    None,
+                )?;
 
                 println!(
                     "Defined function {}: {}",
@@ -130,6 +135,7 @@ impl REPL {
                 &mut self.program,
                 &self.type_info,
                 &Rc::clone(&self.type_info.constant_types),
+                &HashSet::new(),
                 &REPL_ID,
             )?;
             let result = self.evaluate_expression(&REPL_ID, &Rc::new(values), &expression)?;
