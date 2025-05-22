@@ -7,6 +7,10 @@ fn * a:Int b:Int -> 0
 fn - a:Int b:Int -> 0
 fn / a:Int b:Int -> 0
 
+fn exp x:Float -> 0.0
+fn log x:Float -> 0.0
+fn pow x:Float e:Float -> 0.0
+
 fn -- x:Int -> -(x 1)
 fn ++ x: Int -> +(x 1)
 

@@ -12,9 +12,7 @@ use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, FALSE_ID, FOLDL_ID, GE_ID, GT_ID,
-    LE_ID, LIST_ID, LT_ID, MUL_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, SUB_ID, TRUE_ID,
-    WHILE_ID, WILDCARD_ID,
+    IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, EXP_ID, FALSE_ID, FOLDL_ID, GE_ID, GT_ID, LE_ID, LIST_ID, LOG_ID, LT_ID, MUL_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, SUB_ID, TRUE_ID, WHILE_ID, WILDCARD_ID
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -567,6 +565,9 @@ impl REPL {
 
                 Some(Ok(result))
             }
+            EXP_ID => Some(Ok(Rc::new(Value::Float(ordered_arg_values[0].as_float().exp())))),
+            LOG_ID => Some(Ok(Rc::new(Value::Float(ordered_arg_values[0].as_float().ln())))),
+            POW_ID => Some(Ok(Rc::new(Value::Float(ordered_arg_values[0].as_float().powf(ordered_arg_values[1].as_float()))))),
             PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;

@@ -125,4 +125,11 @@ impl Value {
             _ => panic!("Not an Int"),
         }
     }
+
+    pub(super) fn as_float(&self) -> f32 {
+        match self {
+            Value::Float(x) => *x,
+            _ => panic!("Not a Float"),
+        }
+    }
 }
