@@ -2,7 +2,7 @@ use super::{ast::AST, token_stream::TokenStream};
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct ParserResult<RuleId> {
-    pub result: bool,
+    result: bool,
     pub ast: AST<RuleId>,
     pub remaining: TokenStream,
 }

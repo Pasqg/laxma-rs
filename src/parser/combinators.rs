@@ -224,7 +224,7 @@ where
     RuleId: Copy,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
-        if !self.excluded.parse(tokens).result {
+        if !self.excluded.parse(tokens).is_ok() {
             return self.include.parse(tokens);
         }
         return ParserResult::failed(tokens.clone());
@@ -259,17 +259,13 @@ where
         let mut matched = Vec::new();
         let mut children = Vec::new();
         for rule in &self.rules {
-            let ParserResult {
-                result,
-                ast,
-                remaining,
-            } = rule.parse(&_remaining);
-            if !result {
+            let parser_result = rule.parse(&_remaining);
+            if !parser_result.is_ok() {
                 return ParserResult::failed(tokens.clone());
             }
-            _remaining = remaining.clone();
-            matched.extend(ast.matched.clone());
-            children.push(ast);
+            _remaining = parser_result.remaining.clone();
+            matched.extend(parser_result.ast.matched.clone());
+            children.push(parser_result.ast);
         }
         return ParserResult::succeeded(AST::new(self.id, matched, children), _remaining);
     }
@@ -309,19 +305,15 @@ where
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         for rule in &self.rules {
-            let ParserResult {
-                result,
-                ast,
-                remaining,
-            } = rule.parse(tokens);
-            if result {
+            let parser_result = rule.parse(tokens);
+            if parser_result.is_ok() {
                 //todo: probably we don't care about one of children or parent's matched, so we can remove a clone here
                 if self.flattened {
-                    return ParserResult::succeeded(ast, remaining);
+                    return ParserResult::succeeded(parser_result.ast, parser_result.remaining);
                 } else {
                     return ParserResult::succeeded(
-                        AST::new(self.id, ast.matched.clone(), vec![ast]),
-                        remaining,
+                        AST::new(self.id, parser_result.ast.matched.clone(), vec![parser_result.ast]),
+                        parser_result.remaining,
                     );
                 }
             }
@@ -393,7 +385,7 @@ where
         while remaining.not_done() && !mismatch {
             let (delim_result, delim_ast, delim_remaining) = if self.delim.is_some() {
                 let result = self.delim.as_ref().unwrap().parse(&remaining);
-                (result.result, result.ast, result.remaining)
+                (result.is_ok(), result.ast, result.remaining)
             } else {
                 (true, AST::empty(), remaining.clone())
             };
@@ -402,7 +394,7 @@ where
                 mismatch = true;
             } else {
                 let element_result = self.element.parse(&delim_remaining);
-                if element_result.result {
+                if element_result.is_ok() {
                     matches_count += 1;
                     if self.delim.is_some() {
                         matched.extend(delim_ast.matched.clone());

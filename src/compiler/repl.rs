@@ -68,11 +68,11 @@ impl REPL {
     pub fn handle_tokens(&mut self, tokens: &TokenStream) -> Result<String, String> {
         //todo: parse should return Result<ParserResult>
         let mut result = grammar::program_parser().parse(tokens);
-        if !result.result || result.remaining.not_done() {
+        if !result.is_ok() || result.remaining.not_done() {
             result = grammar::expression_parser().parse(tokens);
         }
 
-        if !result.result || result.remaining.not_done() {
+        if !result.is_ok() || result.remaining.not_done() {
             return Err(format!("ERROR: Failed to parse! {:?}", result.remaining));
         }
 
