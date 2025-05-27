@@ -193,6 +193,7 @@ pub(super) enum Expression {
     Float(f32),
     String(Rc<String>),
     WithBlock(Vec<(IdentifierId, Expression)>, Rc<Expression>),
+    Cast(Rc<Expression>, RcType),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
     LambdaExpression(Rc<FunctionDefinition>),
 }
@@ -463,6 +464,12 @@ pub fn expression_repr(
                 Rc::new(true_branch),
                 Rc::new(false_branch),
             ))
+        }
+        Some(Rules::CastExpression) => {
+            let expression = expression_repr(&body.children[1], identifier_map)?;
+            let type_cast = type_repr(&body.children[3], identifier_map)?;
+
+            Ok(Expression::Cast(Rc::new(expression), Rc::new(type_cast)))
         }
         Some(Rules::LambdaExpression) => {
             let result = arguments_repr(&body.children[1], identifier_map);

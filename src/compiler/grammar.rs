@@ -20,6 +20,7 @@ pub enum Rules {
     Arguments,
     Expression,
     WithBlock,
+    CastExpression,
     IfExpression,
     LambdaExpression,
 
@@ -61,7 +62,7 @@ fn identifier() -> Combinators<Rules> {
             Some(Rules::Identifier),
             IDENTIFIER_REGEX,
         )),
-        or_match_flat(vec![slit("fn"), slit("type"), slit("with"), slit("if")]),
+        or_match_flat(vec![slit("fn"), slit("type"), slit("with"), slit("if"), slit("cast"), slit("as")]),
     )
 }
 
@@ -200,6 +201,18 @@ pub fn expression_parser() -> Combinators<Rules> {
         )
     };
 
+    let cast_expression = || {
+        and_match(
+            Rules::CastExpression,
+            vec![
+                slit("cast"),
+                expression.clone(),
+                slit("as"),
+                type_name(),
+            ],
+        )
+    };
+
     let if_expression = || {
         and_match(
             Rules::IfExpression,
@@ -231,6 +244,7 @@ pub fn expression_parser() -> Combinators<Rules> {
             lambda_expression(),
             with_expression(),
             if_expression(),
+            cast_expression(),
             function_call(),
             type_constructor(),
             float(),

@@ -631,6 +631,25 @@ pub fn infer_expression_type(
                 current_function_id,
             )
         }
+        Expression::Cast(expression, type_cast) => {
+            let mut bindings = TypeParameterBindings::new();
+            let expr_type = infer_expression_type(
+                expression,
+                program,
+                type_info,
+                identifier_types,
+                external_type_vars,
+                current_function_id,
+            )?;
+            if !bindings.is_subtype(type_cast, &expr_type) {
+                return Err(format!(
+                    "Cannot cast {} as {}",
+                    expr_type.full_repr(&program.identifier_id_map),
+                    type_cast.full_repr(&program.identifier_id_map)
+                ));
+            }
+            Ok(TypeParameterBindings::concretize(type_cast, &bindings.bindings))
+        }
         Expression::If(condition, when_true, when_false) => {
             let result = infer_expression_type(
                 condition,

@@ -695,6 +695,9 @@ impl REPL {
                     _ => return Err(format!("Bug! If condition should be Bool")),
                 }
             }
+            Expression::Cast(expression, _) => {
+                self.evaluate_expression(caller_id, identifier_values, expression)
+            }
             Expression::Identifier(identifier) => {
                 let result = identifier_values.get(identifier);
                 if result.is_some() {
@@ -1087,6 +1090,25 @@ mod tests {
             repl.handle_input("with h = (x:Int y:Int)->x h(3, 4)"),
             Ok("3".to_string())
         );
+    }
+
+    #[test]
+    fn test_casting() {
+        run_tests(&InsertionOrderHashMap::from([
+            ("type List['T] -> Empty | List 'T List ['T]", ok("")),
+            ("fn empty -> List::Empty()", ok("")),
+            ("cast 1 as Int", ok("1")),
+            ("cast 1 as Float", err("Cannot cast Int as Float")),
+            ("cast 1 as 'T", ok("1")),
+            ("cast \"\" as String", ok("\"\"")),
+            ("cast \"\" as Int", err("Cannot cast String as Int")),
+            ("cast \"\" as 'T", ok("\"\"")),
+            ("cast empty() as 'T", err("Cannot cast List['T] as 'T")),
+            ("cast empty() as 'A", ok("List::Empty()")),
+            ("cast empty() as List['A]", ok("List::Empty()")),
+            ("cast empty() as List[Float]", ok("List::Empty()")),
+            ("cast empty() as List[String]", ok("List::Empty()")),
+        ]));
     }
 
     fn run_test(input: &str, expected: Result<String, String>) {
