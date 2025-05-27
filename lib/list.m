@@ -17,7 +17,7 @@ fn second x:List['T] -> first(rest(x))
 
 fn length x:List['T] = 
     Empty -> 0
-    List _ xs -> +(1 length(xs))
+    List _ xs -> ++(length(xs))
 
 fn empty? x:List['T] =
     Empty -> true
@@ -30,7 +30,7 @@ fn concat xs:List['T] ys:List['T] =
 
 fn range n:Int -> singleton(0)
 
-fn while acc:'T update:('T)->'T condition:('T)->Bool -> acc
+fn while acc:'Acc update:('Acc)->'Acc condition:('Acc)->Bool -> acc
 
 fn foldl f:('Acc 'T)->'Acc z:'Acc xs:List['T] -> z
 
@@ -50,10 +50,6 @@ type Pair['P, 'Q] -> Pair 'P 'Q
 fn pair p:'P q:'Q -> Pair::Pair(p q)
 fn pair_first pair:Pair['P, 'Q] = Pair x _ -> x
 fn pair_second pair:Pair['P, 'Q] = Pair _ x -> x
-
-fn list_of n:Int x:'T =
-    1 , _ -> singleton(x)
-    _, _ -> cons(x list_of(-(n 1) x))
 
 fn recur_while init:'T update:('T)->'T condition:('T)->Bool ->
     if condition(init)

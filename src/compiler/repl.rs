@@ -12,7 +12,7 @@ use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
 use super::identifier_map::{
-    IdentifierId, ADD_ID, DIV_ID, EMPTY_LIST_ID, EQ_ID, ERROR_ID, EXP_ID, FALSE_ID, FOLDL_ID, GE_ID, GT_ID, LE_ID, LIST_ID, LOG_ID, LT_ID, MUL_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, SUB_ID, TRUE_ID, WHILE_ID, WILDCARD_ID
+    IdentifierId, EMPTY_LIST_ID, EQ_ID, ERROR_ID, EXP_ID, FADD_ID, FALSE_ID, FDIV_ID, FMUL_ID, FOLDL_ID, FSUB_ID, GE_ID, GT_ID, IADD_ID, IDIV_ID, IMUL_ID, ISUB_ID, LE_ID, LIST_ID, LOG_ID, LT_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, TRUE_ID, WHILE_ID, WILDCARD_ID
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -437,25 +437,6 @@ impl REPL {
         self.evaluate_function_definition(&definition, &values, &captures)
     }
 
-    fn evaluate_math_operator(
-        &self,
-        id: &IdentifierId,
-        ordered_arg_values: &[RcValue],
-    ) -> Result<RcValue, String> {
-        let a = ordered_arg_values[0].as_int();
-        let b = ordered_arg_values[1].as_int();
-        match *id {
-            ADD_ID => Ok(Rc::new(Value::Integer(a + b))),
-            SUB_ID => Ok(Rc::new(Value::Integer(a - b))),
-            MUL_ID => Ok(Rc::new(Value::Integer(a * b))),
-            DIV_ID => Ok(Rc::new(Value::Integer(a / b))),
-            _ => Err(format!(
-                "Unhandled arithmetic function {}",
-                self.program.var_name(id)
-            )),
-        }
-    }
-
     fn evaluate_boolean_operator(
         &self,
         id: &IdentifierId,
@@ -543,9 +524,6 @@ impl REPL {
         ordered_arg_values: &[RcValue],
     ) -> Option<Result<RcValue, String>> {
         match *id {
-            ADD_ID | SUB_ID | MUL_ID | DIV_ID => {
-                Some(self.evaluate_math_operator(id, ordered_arg_values))
-            }
             GT_ID | LT_ID | EQ_ID | LE_ID | GE_ID => {
                 Some(self.evaluate_boolean_operator(id, ordered_arg_values))
             }
@@ -565,9 +543,17 @@ impl REPL {
 
                 Some(Ok(result))
             }
-            EXP_ID => Some(Ok(Rc::new(Value::Float(ordered_arg_values[0].as_float().exp())))),
-            LOG_ID => Some(Ok(Rc::new(Value::Float(ordered_arg_values[0].as_float().ln())))),
-            POW_ID => Some(Ok(Rc::new(Value::Float(ordered_arg_values[0].as_float().powf(ordered_arg_values[1].as_float()))))),
+            EXP_ID => wrap_float(ordered_arg_values[0].as_float().exp()),
+            LOG_ID => wrap_float(ordered_arg_values[0].as_float().ln()),
+            POW_ID => wrap_float(ordered_arg_values[0].as_float().powf(ordered_arg_values[1].as_float())),
+            IADD_ID => wrap_int(ordered_arg_values[0].as_int() + ordered_arg_values[1].as_int()),
+            IMUL_ID => wrap_int(ordered_arg_values[0].as_int() * ordered_arg_values[1].as_int()),
+            ISUB_ID => wrap_int(ordered_arg_values[0].as_int() - ordered_arg_values[1].as_int()),
+            IDIV_ID => wrap_int(ordered_arg_values[0].as_int() / ordered_arg_values[1].as_int()),
+            FADD_ID => wrap_float(ordered_arg_values[0].as_float() + ordered_arg_values[1].as_float()),
+            FMUL_ID => wrap_float(ordered_arg_values[0].as_float() * ordered_arg_values[1].as_float()),
+            FSUB_ID => wrap_float(ordered_arg_values[0].as_float() - ordered_arg_values[1].as_float()),
+            FDIV_ID => wrap_float(ordered_arg_values[0].as_float() / ordered_arg_values[1].as_float()),
             PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
@@ -734,6 +720,14 @@ impl REPL {
     fn var_name(&self, id: &i32) -> &Rc<String> {
         self.program.identifier_id_map.get_identifier(id).unwrap()
     }
+}
+
+fn wrap_float(f: f32) -> Option<Result<Rc<Value>, String>> {
+    Some(Ok(Rc::new(Value::Float(f))))
+}
+
+fn wrap_int(i: i64) -> Option<Result<Rc<Value>, String>> {
+    Some(Ok(Rc::new(Value::Integer(i))))
 }
 
 #[cfg(test)]

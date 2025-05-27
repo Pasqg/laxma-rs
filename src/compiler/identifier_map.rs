@@ -5,10 +5,10 @@ use nohash_hasher::IntMap;
 pub(super) type IdentifierId = i32;
 
 pub(super) const UNDEFINED_ID: IdentifierId = -1;
-pub(super) const ADD_ID: IdentifierId = 0;
-pub(super) const SUB_ID: IdentifierId = 1;
-pub(super) const MUL_ID: IdentifierId = 2;
-pub(super) const DIV_ID: IdentifierId = 3;
+pub(super) const IADD_ID: IdentifierId = 0;
+pub(super) const ISUB_ID: IdentifierId = 1;
+pub(super) const IMUL_ID: IdentifierId = 2;
+pub(super) const IDIV_ID: IdentifierId = 3;
 pub(super) const GT_ID: IdentifierId = 4;
 pub(super) const LT_ID: IdentifierId = 5;
 pub(super) const EQ_ID: IdentifierId = 6;
@@ -35,6 +35,10 @@ pub(super) const FOLDL_ID: IdentifierId = 26;
 pub(super) const EXP_ID: IdentifierId = 27;
 pub(super) const LOG_ID: IdentifierId = 28;
 pub(super) const POW_ID: IdentifierId = 29;
+pub(super) const FADD_ID: IdentifierId = 30;
+pub(super) const FMUL_ID: IdentifierId = 31;
+pub(super) const FSUB_ID: IdentifierId = 32;
+pub(super) const FDIV_ID: IdentifierId = 33;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -48,10 +52,10 @@ impl IdentifierIdMap {
         let id_map = HashMap::from([
             (Rc::new("Undefined".to_string()), UNDEFINED_ID),
             (Rc::new("REPL".to_string()), REPL_ID),
-            (Rc::new("+".to_string()), ADD_ID),
-            (Rc::new("-".to_string()), SUB_ID),
-            (Rc::new("*".to_string()), MUL_ID),
-            (Rc::new("/".to_string()), DIV_ID),
+            (Rc::new("iadd".to_string()), IADD_ID),
+            (Rc::new("isub".to_string()), ISUB_ID),
+            (Rc::new("imul".to_string()), IMUL_ID),
+            (Rc::new("idiv".to_string()), IDIV_ID),
             (Rc::new(">".to_string()), GT_ID),
             (Rc::new("<".to_string()), LT_ID),
             (Rc::new("==".to_string()), EQ_ID),
@@ -66,6 +70,10 @@ impl IdentifierIdMap {
             (Rc::new("exp".to_string()), EXP_ID),
             (Rc::new("log".to_string()), LOG_ID),
             (Rc::new("pow".to_string()), POW_ID),
+            (Rc::new("fadd".to_string()), FADD_ID),
+            (Rc::new("fmul".to_string()), FMUL_ID),
+            (Rc::new("fsub".to_string()), FSUB_ID),
+            (Rc::new("fdiv".to_string()), FDIV_ID),
 
             (Rc::new("Int".to_string()), INT_ID),
             (Rc::new("Float".to_string()), FLOAT_ID),
