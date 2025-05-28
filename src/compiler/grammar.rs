@@ -1,6 +1,5 @@
 use crate::parser::combinators::{
-    and_match, at_least_n, at_least_one, exclude, many, optional, or_match, or_match_flat,
-    parser_ref, slit, Combinators, MatchRegex,
+    aborting, and_match, at_least_n, at_least_one, exclude, many, optional, or_match, or_match_flat, parser_ref, slit, Combinators, MatchRegex
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -93,7 +92,7 @@ fn destructuring() -> Combinators<Rules> {
     at_least_n(
         Some(Rules::Destructuring),
         identifier(),
-        Some(optional(slit("."))),
+        None,
         2,
     )
 }
@@ -106,8 +105,8 @@ fn type_name() -> Combinators<Rules> {
             vec![
                 identifier(),
                 slit("["),
-                at_least_one(Some(Rules::Elements), type_name.clone(), Some(optional(slit(",")))),
-                slit("]"),
+                aborting(at_least_one(Some(Rules::Elements), type_name.clone(), Some(optional(slit(",")))), format!("Expected a type after '['")),
+                aborting(slit("]"), format!("Expected a closing ']' in type name") ),
             ],
         )
     };
@@ -118,9 +117,9 @@ fn type_name() -> Combinators<Rules> {
             vec![
                 slit("("),
                 many(Some(Rules::Arguments), type_name.clone(), Some(optional(slit(",")))),
-                slit(")"),
-                slit("->"),
-                type_name.clone(),
+                aborting(slit(")"), format!("Expected a closing ')' in function type")),
+                aborting(slit("->"), format!("Expected '->' in function type")),
+                aborting(type_name.clone(), format!("Expected return type in function type")),
             ],
         )
     };
@@ -133,7 +132,11 @@ fn type_name() -> Combinators<Rules> {
 }
 
 fn argument() -> Combinators<Rules> {
-    and_match(Rules::Argument, vec![identifier(), slit(":"), type_name()])
+    and_match(Rules::Argument, vec![
+        identifier(),
+        slit(":"),
+        aborting(type_name(), format!("Expected type after ':'")),
+        ])
 }
 
 fn function_signature() -> Combinators<Rules> {
@@ -141,7 +144,7 @@ fn function_signature() -> Combinators<Rules> {
         Rules::FunctionSignature,
         vec![
             slit("fn"),
-            identifier(),
+            aborting(identifier(), format!("Expected identifier after 'fn'")),
             many(Some(Rules::Arguments), argument(), None),
         ],
     )
@@ -160,7 +163,7 @@ pub fn expression_parser() -> Combinators<Rules> {
                     expression.clone(),
                     Some(optional(slit(","))),
                 ),
-                slit(")"),
+                aborting(slit(")"), format!("Expected ')' in function call")),
             ],
         )
     };
@@ -171,14 +174,14 @@ pub fn expression_parser() -> Combinators<Rules> {
             vec![
                 identifier(),
                 slit("::"),
-                identifier(),
-                slit("("),
+                aborting(identifier(), format!("Expected identifier after '::'")),
+                aborting(slit("("), format!("Expected '(' in type constructor call")),
                 many(
                     Some(Rules::Elements),
                     expression.clone(),
                     Some(optional(slit(","))),
                 ),
-                slit(")"),
+                aborting(slit(")"), format!("Expected ')' in type constructor call")),
             ],
         )
     };
@@ -188,15 +191,15 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::WithBlock,
             vec![
                 slit("with"),
-                at_least_one(
+                aborting(at_least_one(
                     Some(Rules::Elements),
                     and_match(
                         Rules::Element,
                         vec![identifier(), slit("="), expression.clone()],
                     ),
                     None,
-                ),
-                expression.clone(),
+                ), format!("Expecting at least one binding in with block")),
+                aborting(expression.clone(), format!("Expecting expression in with block")),
             ],
         )
     };
@@ -206,9 +209,9 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::CastExpression,
             vec![
                 slit("cast"),
-                expression.clone(),
-                slit("as"),
-                type_name(),
+                aborting(expression.clone(), format!("Expected expression after 'cast'")),
+                aborting(slit("as"), format!("Expected 'as <Type>' in cast expression")),
+                aborting(type_name(), format!("Expected Type in cast expression")),
             ],
         )
     };
@@ -218,9 +221,9 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::IfExpression,
             vec![
                 slit("if"),
-                expression.clone(),
-                expression.clone(),
-                expression.clone(),
+                aborting(expression.clone(), format!("Expected condition after 'if'")),
+                aborting(expression.clone(), format!("Expected true and false branches after 'if condition'")),
+                aborting(expression.clone(), format!("Expected false branch of 'if condition true-branch'"))
             ],
         )
     };
@@ -231,9 +234,9 @@ pub fn expression_parser() -> Combinators<Rules> {
             vec![
                 slit("("),
                 many(Some(Rules::Arguments), argument(), Some(optional(slit(",")))),
-                slit(")"),
-                slit("->"),
-                expression.clone(),
+                aborting(slit(")"), format!("Expected closing ')' in lambda expression")),
+                aborting(slit("->"), format!("Expected '->' in lambda expression")),
+                aborting(expression.clone(), format!("Expected body in lambda expression")),
             ],
         )
     };
@@ -258,7 +261,10 @@ pub fn expression_parser() -> Combinators<Rules> {
 }
 
 fn function_body() -> Combinators<Rules> {
-    and_match(Rules::FunctionBody, vec![slit("->"), expression_parser()])
+    and_match(Rules::FunctionBody, vec![
+        slit("->"),
+        aborting(expression_parser(), format!("Expecting function body after '->'")),
+    ])
 }
 
 fn function_pattern_matching() -> Combinators<Rules> {
@@ -266,7 +272,7 @@ fn function_pattern_matching() -> Combinators<Rules> {
         Rules::PatternMatching,
         vec![
             slit("="),
-            at_least_one(
+            aborting(at_least_one(
                 None,
                 and_match(
                     Rules::Pattern,
@@ -276,11 +282,11 @@ fn function_pattern_matching() -> Combinators<Rules> {
                             or_match_flat(vec![destructuring(), float(), integer(), identifier(), string()]),
                             Some(slit(",")),
                         ),
-                        function_body(),
+                        aborting(function_body(), format!("Expecting function body after pattern")),
                     ],
                 ),
                 None,
-            ),
+            ), format!("Expecting at least one pattern after function signature")),
         ],
     )
 }
@@ -290,7 +296,7 @@ fn function_def() -> Combinators<Rules> {
         Rules::FunctionDef,
         vec![
             function_signature(),
-            or_match_flat(vec![function_pattern_matching(), function_body()]),
+            aborting(or_match_flat(vec![function_pattern_matching(), function_body()]), format!("Expecting function body after function signature")),
         ],
     )
 }
@@ -300,16 +306,16 @@ fn type_def() -> Combinators<Rules> {
         Rules::TypeDef,
         vec![
             slit("type"),
-            type_name(),
-            slit("->"),
-            at_least_one(
+            aborting(type_name(), format!("Expected a type after 'type'")),
+            aborting(slit("->"), format!("Expected '->' after type name in type definition")),
+            aborting(at_least_one(
                 None,
                 and_match(
                     Rules::TypeDef,
                     vec![identifier(), many(Some(Rules::Elements), type_name(), None)],
                 ),
                 Some(slit("|")),
-            ),
+            ), format!("Expected at least one variant in type definition")),
         ],
     )
 }

@@ -24,6 +24,7 @@ pub enum Combinators<RuleId> {
     OrMatch(OrMatch<RuleId>),
     MatchMany(MatchMany<RuleId>),
     Reference(Reference<RuleId>),
+    AbortOnFailure(Rc<Combinators<RuleId>>, String),
 }
 
 impl<RuleId> Combinators<RuleId> {
@@ -50,6 +51,16 @@ where
             Combinators::OrMatch(parser) => parser.parse(tokens),
             Combinators::MatchMany(parser) => parser.parse(tokens),
             Combinators::Reference(parser) => parser.parse(tokens),
+            Combinators::AbortOnFailure(parser, abort_message) => {
+                let result = parser.parse(tokens);
+                if result.is_abort() {
+                    return result;
+                }
+                if !result.is_ok() {
+                    return ParserResult::abort(result.remaining, abort_message.clone());
+                }
+                result
+            }
         }
     }
 }
@@ -79,6 +90,10 @@ pub fn lit<RuleId>(token: Token) -> Combinators<RuleId> {
 
 pub fn slit<RuleId>(token: &str) -> Combinators<RuleId> {
     Combinators::MatchToken(MatchToken::new(None, Token::str(token)))
+}
+
+pub fn aborting<RuleId>(combinator: Combinators<RuleId>, abort_message: String) -> Combinators<RuleId> {
+    Combinators::AbortOnFailure(Rc::new(combinator), abort_message)
 }
 
 impl<RuleId> ParserCombinator<RuleId> for MatchToken<RuleId>
@@ -224,7 +239,11 @@ where
     RuleId: Copy,
 {
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
-        if !self.excluded.parse(tokens).is_ok() {
+        let result = self.excluded.parse(tokens);
+        if result.is_abort() {
+            return result;
+        }
+        if !result.is_ok() {
             return self.include.parse(tokens);
         }
         return ParserResult::failed(tokens.clone());
@@ -260,6 +279,9 @@ where
         let mut children = Vec::new();
         for rule in &self.rules {
             let parser_result = rule.parse(&_remaining);
+            if parser_result.is_abort() {
+                return parser_result;
+            }
             if !parser_result.is_ok() {
                 return ParserResult::failed(tokens.clone());
             }
@@ -306,6 +328,9 @@ where
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         for rule in &self.rules {
             let parser_result = rule.parse(tokens);
+            if parser_result.is_abort() {
+                return parser_result;
+            }
             if parser_result.is_ok() {
                 //todo: probably we don't care about one of children or parent's matched, so we can remove a clone here
                 if self.flattened {
@@ -369,6 +394,9 @@ where
         let mut matches_count = 0;
 
         let result = self.element.parse(tokens);
+        if result.is_abort() {
+            return result;
+        }
         if !result.is_ok() {
             if matches_count < self.n {
                 return ParserResult::failed(tokens.clone());
@@ -385,6 +413,9 @@ where
         while remaining.not_done() && !mismatch {
             let (delim_result, delim_ast, delim_remaining) = if self.delim.is_some() {
                 let result = self.delim.as_ref().unwrap().parse(&remaining);
+                if result.is_abort() {
+                    return result;
+                }
                 (result.is_ok(), result.ast, result.remaining)
             } else {
                 (true, AST::empty(), remaining.clone())
@@ -394,6 +425,9 @@ where
                 mismatch = true;
             } else {
                 let element_result = self.element.parse(&delim_remaining);
+                if element_result.is_abort() {
+                    return element_result;
+                }
                 if element_result.is_ok() {
                     matches_count += 1;
                     if self.delim.is_some() {

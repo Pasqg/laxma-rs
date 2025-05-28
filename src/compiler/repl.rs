@@ -12,7 +12,9 @@ use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
 use super::identifier_map::{
-    IdentifierId, EMPTY_LIST_ID, EQ_ID, ERROR_ID, EXP_ID, FADD_ID, FALSE_ID, FDIV_ID, FMUL_ID, FOLDL_ID, FSUB_ID, GE_ID, GT_ID, IADD_ID, IDIV_ID, IMUL_ID, ISUB_ID, LE_ID, LIST_ID, LOG_ID, LT_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, TRUE_ID, WHILE_ID, WILDCARD_ID
+    IdentifierId, EMPTY_LIST_ID, EQ_ID, ERROR_ID, EXP_ID, FADD_ID, FALSE_ID, FDIV_ID, FMUL_ID,
+    FOLDL_ID, FSUB_ID, GE_ID, GT_ID, IADD_ID, IDIV_ID, IMUL_ID, ISUB_ID, LE_ID, LIST_ID, LOG_ID,
+    LT_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, TRUE_ID, WHILE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -67,14 +69,25 @@ impl REPL {
 
     pub fn handle_tokens(&mut self, tokens: &TokenStream) -> Result<String, String> {
         //todo: parse should return Result<ParserResult>
-        let mut result = grammar::program_parser().parse(tokens);
-        if !result.is_ok() || result.remaining.not_done() {
-            result = grammar::expression_parser().parse(tokens);
+        let program_result = grammar::program_parser().parse(tokens);
+        if program_result.is_abort() {
+            return Err(program_result.abort_message());
         }
 
-        if !result.is_ok() || result.remaining.not_done() {
-            return Err(format!("ERROR: Failed to parse! {:?}", result.remaining));
-        }
+        let result = if !program_result.is_ok() || program_result.remaining.not_done() {
+            let expression_result = grammar::expression_parser().parse(tokens);
+            if expression_result.is_abort() {
+                return Err(expression_result.abort_message());
+            }
+
+            if !expression_result.is_ok() || expression_result.remaining.not_done() {
+                return Err(format!("ERROR: Failed to parse!"));
+            }
+
+            expression_result
+        } else {
+            program_result
+        };
 
         let ast = result.ast;
         let result = to_repr(&ast, &mut self.program.identifier_id_map);
@@ -545,15 +558,27 @@ impl REPL {
             }
             EXP_ID => wrap_float(ordered_arg_values[0].as_float().exp()),
             LOG_ID => wrap_float(ordered_arg_values[0].as_float().ln()),
-            POW_ID => wrap_float(ordered_arg_values[0].as_float().powf(ordered_arg_values[1].as_float())),
+            POW_ID => wrap_float(
+                ordered_arg_values[0]
+                    .as_float()
+                    .powf(ordered_arg_values[1].as_float()),
+            ),
             IADD_ID => wrap_int(ordered_arg_values[0].as_int() + ordered_arg_values[1].as_int()),
             IMUL_ID => wrap_int(ordered_arg_values[0].as_int() * ordered_arg_values[1].as_int()),
             ISUB_ID => wrap_int(ordered_arg_values[0].as_int() - ordered_arg_values[1].as_int()),
             IDIV_ID => wrap_int(ordered_arg_values[0].as_int() / ordered_arg_values[1].as_int()),
-            FADD_ID => wrap_float(ordered_arg_values[0].as_float() + ordered_arg_values[1].as_float()),
-            FMUL_ID => wrap_float(ordered_arg_values[0].as_float() * ordered_arg_values[1].as_float()),
-            FSUB_ID => wrap_float(ordered_arg_values[0].as_float() - ordered_arg_values[1].as_float()),
-            FDIV_ID => wrap_float(ordered_arg_values[0].as_float() / ordered_arg_values[1].as_float()),
+            FADD_ID => {
+                wrap_float(ordered_arg_values[0].as_float() + ordered_arg_values[1].as_float())
+            }
+            FMUL_ID => {
+                wrap_float(ordered_arg_values[0].as_float() * ordered_arg_values[1].as_float())
+            }
+            FSUB_ID => {
+                wrap_float(ordered_arg_values[0].as_float() - ordered_arg_values[1].as_float())
+            }
+            FDIV_ID => {
+                wrap_float(ordered_arg_values[0].as_float() / ordered_arg_values[1].as_float())
+            }
             PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
