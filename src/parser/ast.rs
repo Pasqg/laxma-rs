@@ -118,7 +118,7 @@ where
                 node.matched
                     .iter()
                     .map(|x| match x {
-                        crate::parser::token_stream::Token::StringToken(str) => str.clone(),
+                        Token::StringToken(str, _) => str.clone(),
                     })
                     .collect::<Vec<String>>()
                     .join(" ")

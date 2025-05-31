@@ -533,7 +533,8 @@ fn pattern_matching_repr(
 
         let mut components = Vec::new();
         for component in &pattern.children[0].children {
-            if component.matched[0] != Token::str(",") {
+            //todo: get rid of this, maybe match on rule name
+            if component.matched[0].unwrap_str() != "," {
                 let destructuring = match component.id {
                     Some(Rules::Identifier) => DestructuringComponent::Identifier(
                         identifier_map.get_id(&Rc::new(component.matched[0].unwrap_str())),

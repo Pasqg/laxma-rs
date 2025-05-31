@@ -1,5 +1,6 @@
 use crate::parser::combinators::{
-    aborting, and_match, at_least_n, at_least_one, exclude, many, optional, or_match, or_match_flat, parser_ref, slit, Combinators, MatchRegex
+    aborting, and_match, at_least_n, at_least_one, exclude, many, optional, or_match,
+    or_match_flat, parser_ref, slit, Combinators, MatchRegex,
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -57,11 +58,15 @@ pub(super) const LEXER_REGEX: [&'static str; 7] = [
 
 fn identifier() -> Combinators<Rules> {
     exclude(
-        Combinators::MatchRegex(MatchRegex::new(
-            Some(Rules::Identifier),
-            IDENTIFIER_REGEX,
-        )),
-        or_match_flat(vec![slit("fn"), slit("type"), slit("with"), slit("if"), slit("cast"), slit("as")]),
+        Combinators::MatchRegex(MatchRegex::new(Some(Rules::Identifier), IDENTIFIER_REGEX)),
+        or_match_flat(vec![
+            slit("fn"),
+            slit("type"),
+            slit("with"),
+            slit("if"),
+            slit("cast"),
+            slit("as"),
+        ]),
     )
 }
 
@@ -74,10 +79,7 @@ fn integer() -> Combinators<Rules> {
 }
 
 fn float() -> Combinators<Rules> {
-    Combinators::MatchRegex(MatchRegex::new(
-        Some(Rules::Float),
-        FLOAT_REGEX,
-    ))
+    Combinators::MatchRegex(MatchRegex::new(Some(Rules::Float), FLOAT_REGEX))
 }
 
 fn basic_type_name() -> Combinators<Rules> {
@@ -85,16 +87,14 @@ fn basic_type_name() -> Combinators<Rules> {
 }
 
 fn type_parameter() -> Combinators<Rules> {
-    Combinators::MatchRegex(MatchRegex::new(Some(Rules::TypeParameter), TYPE_PARAMETER_REGEX))
+    Combinators::MatchRegex(MatchRegex::new(
+        Some(Rules::TypeParameter),
+        TYPE_PARAMETER_REGEX,
+    ))
 }
 
 fn destructuring() -> Combinators<Rules> {
-    at_least_n(
-        Some(Rules::Destructuring),
-        identifier(),
-        None,
-        2,
-    )
+    at_least_n(Some(Rules::Destructuring), identifier(), None, 2)
 }
 
 fn type_name() -> Combinators<Rules> {
@@ -105,8 +105,18 @@ fn type_name() -> Combinators<Rules> {
             vec![
                 identifier(),
                 slit("["),
-                aborting(at_least_one(Some(Rules::Elements), type_name.clone(), Some(optional(slit(",")))), format!("Expected a type after '['")),
-                aborting(slit("]"), format!("Expected a closing ']' in type name") ),
+                aborting(
+                    at_least_one(
+                        Some(Rules::Elements),
+                        type_name.clone(),
+                        Some(optional(slit(","))),
+                    ),
+                    format!("Expected a type after '[' at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    slit("]"),
+                    format!("Expected a closing ']' in type name at {{line}}:{{col}}"),
+                ),
             ],
         )
     };
@@ -116,10 +126,23 @@ fn type_name() -> Combinators<Rules> {
             Rules::FunctionType,
             vec![
                 slit("("),
-                many(Some(Rules::Arguments), type_name.clone(), Some(optional(slit(",")))),
-                aborting(slit(")"), format!("Expected a closing ')' in function type")),
-                aborting(slit("->"), format!("Expected '->' in function type")),
-                aborting(type_name.clone(), format!("Expected return type in function type")),
+                many(
+                    Some(Rules::Arguments),
+                    type_name.clone(),
+                    Some(optional(slit(","))),
+                ),
+                aborting(
+                    slit(")"),
+                    format!("Expected a closing ')' in function type at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    slit("->"),
+                    format!("Expected '->' in function type at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    type_name.clone(),
+                    format!("Expected return type in function type at {{line}}:{{col}}"),
+                ),
             ],
         )
     };
@@ -132,11 +155,17 @@ fn type_name() -> Combinators<Rules> {
 }
 
 fn argument() -> Combinators<Rules> {
-    and_match(Rules::Argument, vec![
-        identifier(),
-        slit(":"),
-        aborting(type_name(), format!("Expected type after ':'")),
-        ])
+    and_match(
+        Rules::Argument,
+        vec![
+            identifier(),
+            slit(":"),
+            aborting(
+                type_name(),
+                format!("Expected type after ':' at {{line}}:{{col}}"),
+            ),
+        ],
+    )
 }
 
 fn function_signature() -> Combinators<Rules> {
@@ -144,7 +173,10 @@ fn function_signature() -> Combinators<Rules> {
         Rules::FunctionSignature,
         vec![
             slit("fn"),
-            aborting(identifier(), format!("Expected identifier after 'fn'")),
+            aborting(
+                identifier(),
+                format!("Expected identifier after 'fn' at {{line}}:{{col}}"),
+            ),
             many(Some(Rules::Arguments), argument(), None),
         ],
     )
@@ -163,7 +195,10 @@ pub fn expression_parser() -> Combinators<Rules> {
                     expression.clone(),
                     Some(optional(slit(","))),
                 ),
-                aborting(slit(")"), format!("Expected ')' in function call")),
+                aborting(
+                    slit(")"),
+                    format!("Expected ')' in function call at {{line}}:{{col}}"),
+                ),
             ],
         )
     };
@@ -174,14 +209,23 @@ pub fn expression_parser() -> Combinators<Rules> {
             vec![
                 identifier(),
                 slit("::"),
-                aborting(identifier(), format!("Expected identifier after '::'")),
-                aborting(slit("("), format!("Expected '(' in type constructor call")),
+                aborting(
+                    identifier(),
+                    format!("Expected identifier after '::' at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    slit("("),
+                    format!("Expected '(' in type constructor call at {{line}}:{{col}}"),
+                ),
                 many(
                     Some(Rules::Elements),
                     expression.clone(),
                     Some(optional(slit(","))),
                 ),
-                aborting(slit(")"), format!("Expected ')' in type constructor call")),
+                aborting(
+                    slit(")"),
+                    format!("Expected ')' in type constructor call at {{line}}:{{col}}"),
+                ),
             ],
         )
     };
@@ -191,15 +235,21 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::WithBlock,
             vec![
                 slit("with"),
-                aborting(at_least_one(
-                    Some(Rules::Elements),
-                    and_match(
-                        Rules::Element,
-                        vec![identifier(), slit("="), expression.clone()],
+                aborting(
+                    at_least_one(
+                        Some(Rules::Elements),
+                        and_match(
+                            Rules::Element,
+                            vec![identifier(), slit("="), expression.clone()],
+                        ),
+                        None,
                     ),
-                    None,
-                ), format!("Expecting at least one binding in with block")),
-                aborting(expression.clone(), format!("Expecting expression in with block")),
+                    format!("Expecting at least one binding in with block at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    expression.clone(),
+                    format!("Expecting expression in with block at {{line}}:{{col}}"),
+                ),
             ],
         )
     };
@@ -209,9 +259,18 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::CastExpression,
             vec![
                 slit("cast"),
-                aborting(expression.clone(), format!("Expected expression after 'cast'")),
-                aborting(slit("as"), format!("Expected 'as <Type>' in cast expression")),
-                aborting(type_name(), format!("Expected Type in cast expression")),
+                aborting(
+                    expression.clone(),
+                    format!("Expected expression after 'cast' at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    slit("as"),
+                    format!("Expected 'as <Type>' in cast expression at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    type_name(),
+                    format!("Expected Type in cast expression at {{line}}:{{col}}"),
+                ),
             ],
         )
     };
@@ -221,9 +280,22 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::IfExpression,
             vec![
                 slit("if"),
-                aborting(expression.clone(), format!("Expected condition after 'if'")),
-                aborting(expression.clone(), format!("Expected true and false branches after 'if condition'")),
-                aborting(expression.clone(), format!("Expected false branch of 'if condition true-branch'"))
+                aborting(
+                    expression.clone(),
+                    format!("Expected condition after 'if' at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    expression.clone(),
+                    format!(
+                        "Expected true and false branches after 'if condition' at {{line}}:{{col}}"
+                    ),
+                ),
+                aborting(
+                    expression.clone(),
+                    format!(
+                        "Expected false branch of 'if condition true-branch' at {{line}}:{{col}}"
+                    ),
+                ),
             ],
         )
     };
@@ -233,10 +305,23 @@ pub fn expression_parser() -> Combinators<Rules> {
             Rules::LambdaExpression,
             vec![
                 slit("("),
-                many(Some(Rules::Arguments), argument(), Some(optional(slit(",")))),
-                aborting(slit(")"), format!("Expected closing ')' in lambda expression")),
-                aborting(slit("->"), format!("Expected '->' in lambda expression")),
-                aborting(expression.clone(), format!("Expected body in lambda expression")),
+                many(
+                    Some(Rules::Arguments),
+                    argument(),
+                    Some(optional(slit(","))),
+                ),
+                aborting(
+                    slit(")"),
+                    format!("Expected closing ')' in lambda expression at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    slit("->"),
+                    format!("Expected '->' in lambda expression at {{line}}:{{col}}"),
+                ),
+                aborting(
+                    expression.clone(),
+                    format!("Expected body in lambda expression at {{line}}:{{col}}"),
+                ),
             ],
         )
     };
@@ -261,10 +346,16 @@ pub fn expression_parser() -> Combinators<Rules> {
 }
 
 fn function_body() -> Combinators<Rules> {
-    and_match(Rules::FunctionBody, vec![
-        slit("->"),
-        aborting(expression_parser(), format!("Expecting function body after '->'")),
-    ])
+    and_match(
+        Rules::FunctionBody,
+        vec![
+            slit("->"),
+            aborting(
+                expression_parser(),
+                format!("Expecting function body after '->' at {{line}}:{{col}}"),
+            ),
+        ],
+    )
 }
 
 fn function_pattern_matching() -> Combinators<Rules> {
@@ -272,21 +363,37 @@ fn function_pattern_matching() -> Combinators<Rules> {
         Rules::PatternMatching,
         vec![
             slit("="),
-            aborting(at_least_one(
-                None,
-                and_match(
-                    Rules::Pattern,
-                    vec![
-                        at_least_one(
-                            None,
-                            or_match_flat(vec![destructuring(), float(), integer(), identifier(), string()]),
-                            Some(slit(",")),
-                        ),
-                        aborting(function_body(), format!("Expecting function body after pattern")),
-                    ],
+            aborting(
+                at_least_one(
+                    None,
+                    and_match(
+                        Rules::Pattern,
+                        vec![
+                            at_least_one(
+                                None,
+                                or_match_flat(vec![
+                                    destructuring(),
+                                    float(),
+                                    integer(),
+                                    identifier(),
+                                    string(),
+                                ]),
+                                Some(slit(",")),
+                            ),
+                            aborting(
+                                function_body(),
+                                format!(
+                                    "Expecting function body after pattern at {{line}}:{{col}}"
+                                ),
+                            ),
+                        ],
+                    ),
+                    None,
                 ),
-                None,
-            ), format!("Expecting at least one pattern after function signature")),
+                format!(
+                    "Expecting at least one pattern after function signature at {{line}}:{{col}}"
+                ),
+            ),
         ],
     )
 }
@@ -296,7 +403,10 @@ fn function_def() -> Combinators<Rules> {
         Rules::FunctionDef,
         vec![
             function_signature(),
-            aborting(or_match_flat(vec![function_pattern_matching(), function_body()]), format!("Expecting function body after function signature")),
+            aborting(
+                or_match_flat(vec![function_pattern_matching(), function_body()]),
+                format!("Expecting function body after function signature at {{line}}:{{col}}"),
+            ),
         ],
     )
 }
@@ -306,16 +416,25 @@ fn type_def() -> Combinators<Rules> {
         Rules::TypeDef,
         vec![
             slit("type"),
-            aborting(type_name(), format!("Expected a type after 'type'")),
-            aborting(slit("->"), format!("Expected '->' after type name in type definition")),
-            aborting(at_least_one(
-                None,
-                and_match(
-                    Rules::TypeDef,
-                    vec![identifier(), many(Some(Rules::Elements), type_name(), None)],
+            aborting(
+                type_name(),
+                format!("Expected a type after 'type' at {{line}}:{{col}}"),
+            ),
+            aborting(
+                slit("->"),
+                format!("Expected '->' after type name in type definition at {{line}}:{{col}}"),
+            ),
+            aborting(
+                at_least_one(
+                    None,
+                    and_match(
+                        Rules::TypeDef,
+                        vec![identifier(), many(Some(Rules::Elements), type_name(), None)],
+                    ),
+                    Some(slit("|")),
                 ),
-                Some(slit("|")),
-            ), format!("Expected at least one variant in type definition")),
+                format!("Expected at least one variant in type definition at {{line}}:{{col}}"),
+            ),
         ],
     )
 }
@@ -323,7 +442,8 @@ fn type_def() -> Combinators<Rules> {
 pub fn program_parser() -> Combinators<Rules> {
     many(
         Some(Rules::Program),
-        or_match_flat(vec![function_def(), type_def()]),
+        aborting(or_match_flat(vec![function_def(), type_def()]),
+        format!("Expected only function or type definitions but got syntax error at {{line}}:{{col}}")),
         None,
     )
 }

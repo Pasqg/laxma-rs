@@ -6,7 +6,7 @@ use regex::Regex;
 use super::{
     ast::AST,
     parser_result::ParserResult,
-    token_stream::{Token, TokenStream},
+    token_stream::{Token, TokenInfo, TokenStream},
 };
 
 pub trait ParserCombinator<RuleId> {
@@ -57,7 +57,20 @@ where
                     return result;
                 }
                 if !result.is_ok() {
-                    return ParserResult::abort(result.remaining, abort_message.clone());
+                    if result.remaining.not_done() {
+                        let message = abort_message
+                            .replace("{token}", &tokens.peek().unwrap_str())
+                            .replace("{line}", &tokens.peek().info().line.to_string())
+                            .replace("{col}", &tokens.peek().info().col.to_string());
+                        return ParserResult::abort(result.remaining, message);
+                    }
+                    return ParserResult::abort(
+                        result.remaining,
+                        abort_message
+                            .replace("{token}", "EOF")
+                            .replace("{line}", &tokens.last_info().line.to_string())
+                            .replace("{col}", &tokens.last_info().col.to_string()),
+                    );
                 }
                 result
             }
@@ -79,7 +92,7 @@ impl<RuleId> MatchToken<RuleId> {
     pub fn match_str(id: Option<RuleId>, token: &str) -> Self {
         Self {
             id,
-            token: Token::str(token),
+            token: Token::str(token, TokenInfo::new(0, 0)),
         }
     }
 }
@@ -89,10 +102,13 @@ pub fn lit<RuleId>(token: Token) -> Combinators<RuleId> {
 }
 
 pub fn slit<RuleId>(token: &str) -> Combinators<RuleId> {
-    Combinators::MatchToken(MatchToken::new(None, Token::str(token)))
+    Combinators::MatchToken(MatchToken::match_str(None, token))
 }
 
-pub fn aborting<RuleId>(combinator: Combinators<RuleId>, abort_message: String) -> Combinators<RuleId> {
+pub fn aborting<RuleId>(
+    combinator: Combinators<RuleId>,
+    abort_message: String,
+) -> Combinators<RuleId> {
     Combinators::AbortOnFailure(Rc::new(combinator), abort_message)
 }
 
@@ -103,7 +119,7 @@ where
     fn parse(&self, tokens: &TokenStream) -> ParserResult<RuleId> {
         if tokens.not_done() {
             let (token, remaining) = tokens.advance();
-            if token == self.token {
+            if token.matches(&self.token) {
                 return ParserResult::succeeded(
                     AST::new(self.id, vec![token], Vec::new()),
                     remaining,
@@ -141,11 +157,15 @@ where
         if tokens.not_done() {
             let (token, remaining) = tokens.advance();
             match token {
-                Token::StringToken(token_str) => {
+                Token::StringToken(token_str, token_info) => {
                     let captures = self.regex.captures(&token_str);
                     if captures.is_some() && captures.unwrap()[0] == token_str {
                         return ParserResult::succeeded(
-                            AST::new(self.id, vec![Token::StringToken(token_str)], Vec::new()),
+                            AST::new(
+                                self.id,
+                                vec![Token::StringToken(token_str, token_info)],
+                                Vec::new(),
+                            ),
                             remaining,
                         );
                     }
@@ -337,7 +357,11 @@ where
                     return ParserResult::succeeded(parser_result.ast, parser_result.remaining);
                 } else {
                     return ParserResult::succeeded(
-                        AST::new(self.id, parser_result.ast.matched.clone(), vec![parser_result.ast]),
+                        AST::new(
+                            self.id,
+                            parser_result.ast.matched.clone(),
+                            vec![parser_result.ast],
+                        ),
                         parser_result.remaining,
                     );
                 }
@@ -534,12 +558,12 @@ mod test {
             OrMatch, ParserCombinator, Reference,
         },
         parser_result::ParserResult,
-        token_stream::{Token, TokenStream},
+        token_stream::{Token, TokenInfo, TokenStream},
     };
 
     #[test]
     fn test_match_token_success() {
-        let tokens = TokenStream::from_str(&["a", "b"]);
+        let tokens = test_stream(&["a", "b"]);
 
         let rule = Some("test");
         let parser = MatchToken::match_str(rule, "a");
@@ -548,15 +572,19 @@ mod test {
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec![Token::str("a")], Vec::new()),
-                TokenStream::with_offset(Rc::new(vec![Token::str("a"), Token::str("b")]), 1)
+                AST::new(rule, vec![test_token("a")], Vec::new()),
+                TokenStream::with_offset(
+                    Rc::new(vec![test_token("a"), test_token("b")]),
+                    1,
+                    TokenInfo::new(0, 0)
+                )
             )
         );
     }
 
     #[test]
     fn test_match_token_failed() {
-        let tokens = TokenStream::from_str(&["c", "b"]);
+        let tokens = test_stream(&["c", "b"]);
 
         let rule = Some("test");
         let parser = MatchToken::match_str(rule, "a");
@@ -567,7 +595,7 @@ mod test {
 
     #[test]
     fn test_regex_success() {
-        let tokens = TokenStream::from_str(&["variable", "b"]);
+        let tokens = test_stream(&["variable", "b"]);
 
         let rule = Some("test");
         let parser = MatchRegex::new(rule, r"[a-z]+");
@@ -576,15 +604,19 @@ mod test {
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec![Token::str("variable")], Vec::new()),
-                TokenStream::with_offset(Rc::new(vec![Token::str("variable"), Token::str("b")]), 1)
+                AST::new(rule, vec![test_token("variable")], Vec::new()),
+                TokenStream::with_offset(
+                    Rc::new(vec![test_token("variable"), test_token("b")]),
+                    1,
+                    TokenInfo::new(0, 0)
+                )
             )
         );
     }
 
     #[test]
     fn test_regex_failure_partial() {
-        let tokens = TokenStream::from_str(&["variableA", "b"]);
+        let tokens = test_stream(&["variableA", "b"]);
 
         let rule = Some("test");
         let parser = MatchRegex::new(rule, r"[a-z]+");
@@ -595,7 +627,7 @@ mod test {
 
     #[test]
     fn test_regex_failure() {
-        let tokens = TokenStream::from_str(&["variableA", "b"]);
+        let tokens = test_stream(&["variableA", "b"]);
 
         let rule = Some("test");
         let parser = MatchRegex::new(rule, r"[0-9]+");
@@ -606,7 +638,7 @@ mod test {
 
     #[test]
     fn test_match_none_empty_stream() {
-        let tokens: TokenStream = TokenStream::from_str(&[]);
+        let tokens: TokenStream = test_stream(&[]);
 
         let result: ParserResult<&str> = MatchNone.parse(&tokens);
         assert_eq!(result, ParserResult::succeeded(AST::empty(), tokens));
@@ -614,7 +646,7 @@ mod test {
 
     #[test]
     fn test_match_none() {
-        let tokens: TokenStream = TokenStream::from_str(&["a"]);
+        let tokens: TokenStream = test_stream(&["a"]);
 
         let result: ParserResult<&str> = MatchNone.parse(&tokens);
         assert_eq!(result, ParserResult::succeeded(AST::empty(), tokens));
@@ -622,7 +654,7 @@ mod test {
 
     #[test]
     fn test_match_any_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a"]);
+        let tokens: TokenStream = test_stream(&["a"]);
 
         let rule = Some("test");
         let parser = MatchAny::new(rule, Some(slit("b")));
@@ -631,15 +663,15 @@ mod test {
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(rule, vec![Token::str("a")], Vec::new()),
-                TokenStream::with_offset(Rc::new(vec![Token::str("a")]), 1)
+                AST::new(rule, vec![test_token("a")], Vec::new()),
+                TokenStream::with_offset(Rc::new(vec![test_token("a")]), 1, TokenInfo::new(0, 0))
             )
         );
     }
 
     #[test]
     fn test_match_any_failure() {
-        let tokens: TokenStream = TokenStream::from_str(&["b"]);
+        let tokens: TokenStream = test_stream(&["b"]);
 
         let rule = Some("test");
         let parser = MatchAny::new(rule, Some(slit("b")));
@@ -650,7 +682,7 @@ mod test {
 
     #[test]
     fn test_exclude_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["b"]);
+        let tokens: TokenStream = test_stream(&["b"]);
 
         let parser = exclude(regex(r"[a-z]+"), slit("a"));
 
@@ -658,15 +690,15 @@ mod test {
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(None, vec![Token::str("b")], vec![]),
-                TokenStream::with_offset(Rc::new(vec![Token::str("b")]), 1)
+                AST::new(None, vec![test_token("b")], vec![]),
+                TokenStream::with_offset(Rc::new(vec![test_token("b")]), 1, TokenInfo::new(0, 0))
             )
         );
     }
 
     #[test]
     fn test_exclude_failure() {
-        let tokens: TokenStream = TokenStream::from_str(&["b"]);
+        let tokens: TokenStream = test_stream(&["b"]);
 
         let parser = exclude(regex(r"[a-z]+"), slit("b"));
 
@@ -676,7 +708,7 @@ mod test {
 
     #[test]
     fn test_and_match_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "b", "c"]);
+        let tokens: TokenStream = test_stream(&["a", "b", "c"]);
 
         let rule = Some("test");
         let parser = AndMatch::new(rule, vec![slit("a"), slit("b")]);
@@ -687,15 +719,16 @@ mod test {
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec![Token::str("a"), Token::str("b")],
+                    vec![test_token("a"), test_token("b")],
                     vec![
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str("b")], Vec::new())
+                        AST::new(None, vec![test_token("a")], Vec::new()),
+                        AST::new(None, vec![test_token("b")], Vec::new())
                     ]
                 ),
                 TokenStream::with_offset(
-                    Rc::new(vec![Token::str("a"), Token::str("b"), Token::str("c")]),
-                    2
+                    Rc::new(vec![test_token("a"), test_token("b"), test_token("c")]),
+                    2,
+                    TokenInfo::new(0, 0)
                 )
             )
         );
@@ -703,7 +736,7 @@ mod test {
 
     #[test]
     fn test_and_match_failure() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "c"]);
+        let tokens: TokenStream = test_stream(&["a", "c"]);
 
         let rule = Some("test");
         let parser = AndMatch::new(rule, vec![slit("a"), slit("b")]);
@@ -714,7 +747,7 @@ mod test {
 
     #[test]
     fn test_or_match_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "b"]);
+        let tokens: TokenStream = test_stream(&["a", "b"]);
 
         let rule = Some("test");
         let parser = OrMatch::new(rule, vec![slit("a"), slit("b")], false);
@@ -725,17 +758,21 @@ mod test {
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec![Token::str("a")],
-                    vec![AST::new(None, vec![Token::str("a")], Vec::new())]
+                    vec![test_token("a")],
+                    vec![AST::new(None, vec![test_token("a")], Vec::new())]
                 ),
-                TokenStream::with_offset(Rc::new(vec![Token::str("a"), Token::str("b")]), 1)
+                TokenStream::with_offset(
+                    Rc::new(vec![test_token("a"), test_token("b")]),
+                    1,
+                    TokenInfo::new(0, 0)
+                )
             )
         );
     }
 
     #[test]
     fn test_or_match_failure() {
-        let tokens: TokenStream = TokenStream::from_str(&["c"]);
+        let tokens: TokenStream = test_stream(&["c"]);
 
         let rule = Some("test");
         let parser = OrMatch::new(rule, vec![slit("a"), slit("b")], false);
@@ -746,7 +783,7 @@ mod test {
 
     #[test]
     fn test_optional_some() {
-        let tokens: TokenStream = TokenStream::from_str(&["a"]);
+        let tokens: TokenStream = test_stream(&["a"]);
 
         let parser = optional(slit("a"));
 
@@ -754,15 +791,15 @@ mod test {
         assert_eq!(
             result,
             ParserResult::succeeded(
-                AST::new(None, vec![Token::str("a")], vec![]),
-                TokenStream::with_offset(Rc::new(vec![Token::str("a")]), 1)
+                AST::new(None, vec![test_token("a")], vec![]),
+                TokenStream::with_offset(Rc::new(vec![test_token("a")]), 1, TokenInfo::new(0, 0))
             )
         );
     }
 
     #[test]
     fn test_optional_none() {
-        let tokens: TokenStream = TokenStream::from_str(&["a"]);
+        let tokens: TokenStream = test_stream(&["a"]);
 
         let parser = optional(slit("b"));
 
@@ -775,7 +812,7 @@ mod test {
 
     #[test]
     fn test_at_least_once_no_delim_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "a", "a", "b"]);
+        let tokens: TokenStream = test_stream(&["a", "a", "a", "b"]);
 
         let rule = Some("test");
         let parser = at_least_one(rule, slit("a"), None);
@@ -786,21 +823,22 @@ mod test {
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec![Token::str("a"), Token::str("a"), Token::str("a")],
+                    vec![test_token("a"), test_token("a"), test_token("a")],
                     vec![
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new())
+                        AST::new(None, vec![test_token("a")], Vec::new()),
+                        AST::new(None, vec![test_token("a")], Vec::new()),
+                        AST::new(None, vec![test_token("a")], Vec::new())
                     ]
                 ),
                 TokenStream::with_offset(
                     Rc::new(vec![
-                        Token::str("a"),
-                        Token::str("a"),
-                        Token::str("a"),
-                        Token::str("b")
+                        test_token("a"),
+                        test_token("a"),
+                        test_token("a"),
+                        test_token("b")
                     ]),
-                    3
+                    3,
+                    TokenInfo::new(0, 0)
                 ),
             )
         );
@@ -808,7 +846,7 @@ mod test {
 
     #[test]
     fn test_at_least_once_failure() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "a", "a", "b"]);
+        let tokens: TokenStream = test_stream(&["a", "a", "a", "b"]);
 
         let rule = Some("test");
         let parser = at_least_one(rule, slit("b"), None);
@@ -819,7 +857,7 @@ mod test {
 
     #[test]
     fn test_at_least_one_empty_stream_failure() {
-        let tokens: TokenStream = TokenStream::from_str(&[]);
+        let tokens: TokenStream = test_stream(&[]);
 
         let rule = Some("test");
         let parser = at_least_one(rule, slit("b"), None);
@@ -830,7 +868,7 @@ mod test {
 
     #[test]
     fn test_at_least_one_stream_done_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "a"]);
+        let tokens: TokenStream = test_stream(&["a", "a"]);
 
         let rule = Some("test");
         let parser = at_least_one(rule, slit("a"), None);
@@ -841,20 +879,24 @@ mod test {
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec![Token::str("a"), Token::str("a")],
+                    vec![test_token("a"), test_token("a")],
                     vec![
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
+                        AST::new(None, vec![test_token("a")], Vec::new()),
+                        AST::new(None, vec![test_token("a")], Vec::new()),
                     ]
                 ),
-                TokenStream::with_offset(Rc::new(vec![Token::str("a"), Token::str("a"),]), 2),
+                TokenStream::with_offset(
+                    Rc::new(vec![test_token("a"), test_token("a"),]),
+                    2,
+                    TokenInfo::new(0, 0)
+                ),
             )
         );
     }
 
     #[test]
     fn test_many_none_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "a", "a", "b"]);
+        let tokens: TokenStream = test_stream(&["a", "a", "a", "b"]);
 
         let rule = Some("test");
         let parser = many(rule, slit("b"), None);
@@ -868,7 +910,7 @@ mod test {
 
     #[test]
     fn test_at_least_one_delim_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", ",", "a", ","]);
+        let tokens: TokenStream = test_stream(&["a", ",", "a", ","]);
 
         let rule = Some("test");
         let parser = at_least_one(rule, slit("a"), Some(slit(",")));
@@ -879,21 +921,22 @@ mod test {
             ParserResult::succeeded(
                 AST::new(
                     rule,
-                    vec![Token::str("a"), Token::str(","), Token::str("a")],
+                    vec![test_token("a"), test_token(","), test_token("a")],
                     vec![
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str(",")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new())
+                        AST::new(None, vec![test_token("a")], Vec::new()),
+                        AST::new(None, vec![test_token(",")], Vec::new()),
+                        AST::new(None, vec![test_token("a")], Vec::new())
                     ]
                 ),
                 TokenStream::with_offset(
                     Rc::new(vec![
-                        Token::str("a"),
-                        Token::str(","),
-                        Token::str("a"),
-                        Token::str(",")
+                        test_token("a"),
+                        test_token(","),
+                        test_token("a"),
+                        test_token(",")
                     ]),
-                    3
+                    3,
+                    TokenInfo::new(0, 0),
                 ),
             )
         );
@@ -901,7 +944,7 @@ mod test {
 
     #[test]
     fn test_many_delim_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", ",", "a", ","]);
+        let tokens: TokenStream = test_stream(&["a", ",", "a", ","]);
 
         let rule = Some("test");
         let parser = many(rule, slit("b"), Some(slit(",")));
@@ -915,7 +958,7 @@ mod test {
 
     #[test]
     fn test_match_many_delim_success() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", ",", "a", ",", "a", ","]);
+        let tokens: TokenStream = test_stream(&["a", ",", "a", ",", "a", ","]);
 
         let rule = Some("test");
         let parser = MatchMany::new(rule, slit("a"), Some(slit(",")), 3);
@@ -927,30 +970,31 @@ mod test {
                 AST::new(
                     rule,
                     vec![
-                        Token::str("a"),
-                        Token::str(","),
-                        Token::str("a"),
-                        Token::str(","),
-                        Token::str("a")
+                        test_token("a"),
+                        test_token(","),
+                        test_token("a"),
+                        test_token(","),
+                        test_token("a")
                     ],
                     vec![
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str(",")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new()),
-                        AST::new(None, vec![Token::str(",")], Vec::new()),
-                        AST::new(None, vec![Token::str("a")], Vec::new())
+                        AST::new(None, vec![test_token("a")], Vec::new()),
+                        AST::new(None, vec![test_token(",")], Vec::new()),
+                        AST::new(None, vec![test_token("a")], Vec::new()),
+                        AST::new(None, vec![test_token(",")], Vec::new()),
+                        AST::new(None, vec![test_token("a")], Vec::new())
                     ]
                 ),
                 TokenStream::with_offset(
                     Rc::new(vec![
-                        Token::str("a"),
-                        Token::str(","),
-                        Token::str("a"),
-                        Token::str(","),
-                        Token::str("a"),
-                        Token::str(",")
+                        test_token("a"),
+                        test_token(","),
+                        test_token("a"),
+                        test_token(","),
+                        test_token("a"),
+                        test_token(",")
                     ]),
-                    5
+                    5,
+                    TokenInfo::new(0, 0)
                 ),
             )
         );
@@ -958,7 +1002,7 @@ mod test {
 
     #[test]
     fn test_match_many_delim_failure() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", ",", "a", ",", "a", ","]);
+        let tokens: TokenStream = test_stream(&["a", ",", "a", ",", "a", ","]);
 
         let rule = Some("test");
         let parser = MatchMany::new(rule, slit("a"), Some(slit(",")), 5);
@@ -969,7 +1013,7 @@ mod test {
 
     #[test]
     fn test_reference_recursion() {
-        let tokens: TokenStream = TokenStream::from_str(&["a", "a", "a", ","]);
+        let tokens: TokenStream = test_stream(&["a", "a", "a", ","]);
 
         let parser = Reference::new();
         let body = or_match_flat(vec![
@@ -985,19 +1029,19 @@ mod test {
         let expected = ParserResult::succeeded(
             AST::new(
                 Some("and"),
-                vec![Token::str("a"), Token::str("a"), Token::str("a")],
+                vec![test_token("a"), test_token("a"), test_token("a")],
                 vec![
-                    AST::new(None, vec![Token::str("a")], Vec::new()),
+                    AST::new(None, vec![test_token("a")], Vec::new()),
                     AST::new(
                         Some("and"),
-                        vec![Token::str("a"), Token::str("a")],
+                        vec![test_token("a"), test_token("a")],
                         vec![
-                            AST::new(None, vec![Token::str("a")], Vec::new()),
+                            AST::new(None, vec![test_token("a")], Vec::new()),
                             AST::new(
                                 Some("and"),
-                                vec![Token::str("a")],
+                                vec![test_token("a")],
                                 vec![
-                                    AST::new(None, vec![Token::str("a")], Vec::new()),
+                                    AST::new(None, vec![test_token("a")], Vec::new()),
                                     AST::empty(),
                                 ],
                             ),
@@ -1007,12 +1051,13 @@ mod test {
             ),
             TokenStream::with_offset(
                 Rc::new(vec![
-                    Token::str("a"),
-                    Token::str("a"),
-                    Token::str("a"),
-                    Token::str(","),
+                    test_token("a"),
+                    test_token("a"),
+                    test_token("a"),
+                    test_token(","),
                 ]),
                 3,
+                TokenInfo::new(0, 0),
             ),
         );
         assert_result(result, expected);
@@ -1027,5 +1072,21 @@ mod test {
             "\n{}\nbut expected:\n{}",
             result.ast, expected.ast
         );
+    }
+
+    fn test_token(str: &str) -> Token {
+        Token::str(str, TokenInfo::new(0, 0))
+    }
+
+    fn test_stream(tokens: &[&str]) -> TokenStream {
+        TokenStream::new(
+            Rc::new(
+                tokens
+                    .into_iter()
+                    .map(|token| Token::str(token, TokenInfo::new(0, 0)))
+                    .collect(),
+            ),
+            TokenInfo::new(0, 0),
+        )
     }
 }
