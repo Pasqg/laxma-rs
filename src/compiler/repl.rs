@@ -70,12 +70,12 @@ impl REPL {
     pub fn handle_tokens(&mut self, tokens: &TokenStream) -> Result<String, String> {
         //todo: parse should return Result<ParserResult>
         let program_result = grammar::program_parser().parse(tokens);
-        if program_result.is_abort() {
-            return Err(program_result.abort_message());
-        }
-
         let result = if !program_result.is_ok() || program_result.remaining.not_done() {
             let expression_result = grammar::expression_parser().parse(tokens);
+            if !expression_result.is_ok() && program_result.is_abort() {
+                return Err(program_result.abort_message());
+            }
+
             if expression_result.is_abort() {
                 return Err(expression_result.abort_message());
             }
