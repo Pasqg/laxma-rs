@@ -209,6 +209,18 @@ pub(super) struct Pattern {
     pub(super) components: Vec<DestructuringComponent>,
 }
 
+impl Pattern {
+    pub(super) fn empty() -> Self {
+        Self {
+            components: Vec::new(),
+        }
+    }
+
+    pub(super) fn new(components: Vec<DestructuringComponent>) -> Self {
+        Self { components }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub(super) struct FunctionDefinition {
     pub(super) id: IdentifierId,
@@ -506,12 +518,7 @@ pub fn expression_repr(
                         .join(""),
                 )),
                 arguments: args,
-                bodies: vec![(
-                    Pattern {
-                        components: Vec::new(),
-                    },
-                    expr,
-                )],
+                bodies: vec![(Pattern::empty(), expr)],
             })))
         }
         _ => Err(format!(
@@ -564,7 +571,7 @@ fn pattern_matching_repr(
         }
 
         let result = expression_repr(&pattern.children[1].children[1], identifier_map)?;
-        bodies.push((Pattern { components }, result));
+        bodies.push((Pattern::new(components), result));
     }
     return Ok(bodies);
 }
@@ -589,9 +596,7 @@ fn function_repr(
 
     if rule == Rules::FunctionBody {
         bodies.push((
-            Pattern {
-                components: Vec::new(),
-            },
+            Pattern::empty(),
             expression_repr(&body.children[1], identifier_map)?,
         ));
     } else if rule == Rules::PatternMatching {
