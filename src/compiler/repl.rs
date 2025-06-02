@@ -7,7 +7,7 @@ use nohash_hasher::IntMap;
 
 use crate::compiler::grammar;
 use crate::compiler::identifier_map::{UNDECIDED_ID, VOID_ID};
-use crate::compiler::internal_repr::to_repr;
+use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
 use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
@@ -98,13 +98,48 @@ impl REPL {
                 identifier_id_map: _,
             } = result.unwrap();
 
-            for (id, definition) in types {
+            for (type_id, definition) in types {
                 verify_type_definition(&mut self.program, &self.type_info, &definition)?;
 
-                println!("Defined type {}", self.var_name(&id));
+                println!("Defined type {}", self.var_name(&type_id));
 
-                self.type_info.add_user_type(id, &definition);
-                self.program.types.insert(id, definition);
+                self.type_info.add_user_type(type_id, &definition);
+                
+                for (variant_id, variant) in &definition.variants {
+                    let constructor_id = self.program.identifier_id_map.get_id(&Rc::new(format!("{}.{}", self.program.var_name(&type_id), self.program.var_name(&variant_id))));
+                    match variant.as_ref() {
+                        TypeVariant::Constant(_) => {
+                            let func_def = FunctionDefinition {
+                                id: constructor_id,
+                                arguments: Vec::new(),
+                                bodies: vec![(Pattern::empty(), Expression::TypeConstructor(type_id, *variant_id, constructor_id, Vec::new()))],
+                            };
+                            self.program.functions.insert(constructor_id, Rc::new(func_def));
+                        }
+                        TypeVariant::Cartesian(_, elements) => {
+                            let mut arguments = Vec::new();
+                            let mut argument_expressions = Vec::new();
+                            for i in 0..elements.len() {
+                                let arg_id = self.program.identifier_id_map.get_id(&Rc::new(format!("_arg{}", i+1)));
+                                let argument = FunctionArgument {
+                                    identifier: arg_id,
+                                    typing: Rc::clone(&elements[i]),
+                                };
+                                let expr = Expression::Identifier(arg_id);
+                                arguments.push(argument);
+                                argument_expressions.push(expr);
+                            }
+                            let func_def = FunctionDefinition {
+                                id: constructor_id,
+                                arguments,
+                                bodies: vec![(Pattern::empty(), Expression::TypeConstructor(type_id, *variant_id, constructor_id, argument_expressions))],
+                            };
+                            self.program.functions.insert(constructor_id, Rc::new(func_def));
+                        }
+                    }
+                }
+
+                self.program.types.insert(type_id, definition);
             }
 
             for key in functions.keys() {

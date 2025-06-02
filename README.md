@@ -58,12 +58,20 @@ This is very similar to the previous IntList definition, with the added ['T] whi
 
 ### Type constructors
 
-Variants of a certain type can be constructed using the type constructor. The syntax is `<Type name>::<Variant name>(<values for fields>)`.
+Variants of a certain type can be constructed using the type constructor expression. The syntax is `<Type name>::<Variant name>(<values for fields>)`.
 
 ```rust
 List::Empty()
 List::List(1, List::Empty())
 List::List(2, List::List(1, List::Empty()))
+```
+
+Type constructors also come in form of functions with naming convention `<Type name>.<Variant name>`. Note the `.` is not a special operator but just a character in the function name. As all other functions, the type constructor functions can be used as function arguments, while type constructor expressions cannot.
+
+```rust
+List.Empty()
+List.List(1, List.Empty())
+List.List(2, List.List(1, List.Empty()))
 ```
 
 ### Built-in types
@@ -164,6 +172,16 @@ fn fibonacci n:Int =
 ```
 
 Although nested with expressions are allowed, it is better to avoid them for readibility.
+
+### Cast expression
+
+Safe cast expression that always resolves to a concrete type or a type variable
+```
+cast 3 as Int -> Int
+cast 4 as Float -> error!
+cast x:'T as 'B -> 
+cast empty() as List['B] -> List['B]
+```
 
 ### Return type inference
 

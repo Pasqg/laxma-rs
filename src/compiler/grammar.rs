@@ -38,7 +38,7 @@ pub enum Rules {
     Program,
 }
 
-const IDENTIFIER_REGEX: &'static str = r"[a-zA-Z?_\+\-\*\/><=\^\.][a-zA-Z?_\+\-\*\/0-9\^=]*";
+const IDENTIFIER_REGEX: &'static str = r"[a-zA-Z?_\+\-\*\/><=\^\.][a-zA-Z?_\+\-\*\/0-9\^=\.]*";
 const INTEGER_REGEX: &'static str = r"[\-\+]?\d+";
 const FLOAT_REGEX: &'static str = r"[\-\+]?\d+\.\d+";
 const STRING_REGEX: &'static str = r#"\"[^\"]*\""#;

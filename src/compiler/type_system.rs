@@ -740,7 +740,7 @@ pub fn infer_function_definition_type(
             Type::PrimitiveType(_) | Type::CompositeType(_, _) => {
                 let id = argument.typing.id();
                 if !type_info.type_exists(&id) {
-                    return Err(format!("[1] '{}' doesn't exist", program.var_name(&id)));
+                    return Err(format!("Type '{}' doesn't exist", program.var_name(&id)));
                 }
             }
             Type::Undecided => panic!(
@@ -752,7 +752,7 @@ pub fn infer_function_definition_type(
                 for arg_type in args {
                     if !arg_type.is_type_parameter() && !type_info.type_exists(&arg_type.id()) {
                         return Err(format!(
-                            "[2] '{}' doesn't exist",
+                            "Type '{}' doesn't exist",
                             program.var_name(&arg_type.id())
                         ));
                     }
@@ -761,7 +761,7 @@ pub fn infer_function_definition_type(
                 let return_id = return_type.id();
                 if !return_type.is_type_parameter() && !type_info.type_exists(&return_id) {
                     return Err(format!(
-                        "[3] '{}' doesn't exist",
+                        "Type '{}' doesn't exist",
                         program.var_name(&return_id)
                     ));
                 }
