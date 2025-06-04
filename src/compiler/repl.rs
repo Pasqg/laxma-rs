@@ -27,6 +27,8 @@ use super::type_system::{
 use super::utils::to_int_map;
 use super::value::{RcValue, Value};
 
+const RUN_OPTIMISER: bool = true;
+
 #[derive(Clone, Debug)]
 struct PatternMatchResult {
     is_match: bool,
@@ -104,23 +106,40 @@ impl REPL {
                 println!("Defined type {}", self.var_name(&type_id));
 
                 self.type_info.add_user_type(type_id, &definition);
-                
+
                 for (variant_id, variant) in &definition.variants {
-                    let constructor_id = self.program.identifier_id_map.get_id(&Rc::new(format!("{}.{}", self.program.var_name(&type_id), self.program.var_name(&variant_id))));
+                    let constructor_id = self.program.identifier_id_map.get_id(&Rc::new(format!(
+                        "{}.{}",
+                        self.program.var_name(&type_id),
+                        self.program.var_name(&variant_id)
+                    )));
                     match variant.as_ref() {
                         TypeVariant::Constant(_) => {
                             let func_def = FunctionDefinition {
                                 id: constructor_id,
                                 arguments: Vec::new(),
-                                bodies: vec![(Pattern::empty(), Rc::new(Expression::TypeConstructor(type_id, *variant_id, constructor_id, Vec::new())))],
+                                bodies: vec![(
+                                    Pattern::empty(),
+                                    Rc::new(Expression::TypeConstructor(
+                                        type_id,
+                                        *variant_id,
+                                        constructor_id,
+                                        Vec::new(),
+                                    )),
+                                )],
                             };
-                            self.program.functions.insert(constructor_id, Rc::new(func_def));
+                            self.program
+                                .functions
+                                .insert(constructor_id, Rc::new(func_def));
                         }
                         TypeVariant::Cartesian(_, elements) => {
                             let mut arguments = Vec::new();
                             let mut argument_expressions = Vec::new();
                             for i in 0..elements.len() {
-                                let arg_id = self.program.identifier_id_map.get_id(&Rc::new(format!("_arg{}", i+1)));
+                                let arg_id = self
+                                    .program
+                                    .identifier_id_map
+                                    .get_id(&Rc::new(format!("_arg{}", i + 1)));
                                 let argument = FunctionArgument {
                                     identifier: arg_id,
                                     typing: Rc::clone(&elements[i]),
@@ -132,9 +151,19 @@ impl REPL {
                             let func_def = FunctionDefinition {
                                 id: constructor_id,
                                 arguments,
-                                bodies: vec![(Pattern::empty(), Rc::new(Expression::TypeConstructor(type_id, *variant_id, constructor_id, argument_expressions)))],
+                                bodies: vec![(
+                                    Pattern::empty(),
+                                    Rc::new(Expression::TypeConstructor(
+                                        type_id,
+                                        *variant_id,
+                                        constructor_id,
+                                        argument_expressions,
+                                    )),
+                                )],
                             };
-                            self.program.functions.insert(constructor_id, Rc::new(func_def));
+                            self.program
+                                .functions
+                                .insert(constructor_id, Rc::new(func_def));
                         }
                     }
                 }
@@ -159,6 +188,17 @@ impl REPL {
 
                 self.program.functions.insert(**id, Rc::clone(definition));
                 self.type_info.function_types.insert(**id, function_type);
+            }
+
+            if RUN_OPTIMISER {
+                for id in self.program.functions.keys().clone() {
+                    let definition = self.program.functions.get(&id).unwrap();
+                    let optimised = optimise_function(&self.program, definition);
+                    println!("{:?}", optimised);
+                    self.program
+                        .functions
+                        .insert(*id.as_ref(), optimised);
+                }
             }
 
             return Ok(String::new());
