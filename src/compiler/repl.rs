@@ -112,7 +112,7 @@ impl REPL {
                             let func_def = FunctionDefinition {
                                 id: constructor_id,
                                 arguments: Vec::new(),
-                                bodies: vec![(Pattern::empty(), Expression::TypeConstructor(type_id, *variant_id, constructor_id, Vec::new()))],
+                                bodies: vec![(Pattern::empty(), Rc::new(Expression::TypeConstructor(type_id, *variant_id, constructor_id, Vec::new())))],
                             };
                             self.program.functions.insert(constructor_id, Rc::new(func_def));
                         }
@@ -125,14 +125,14 @@ impl REPL {
                                     identifier: arg_id,
                                     typing: Rc::clone(&elements[i]),
                                 };
-                                let expr = Expression::Identifier(arg_id);
+                                let expr = Rc::new(Expression::Identifier(arg_id));
                                 arguments.push(argument);
                                 argument_expressions.push(expr);
                             }
                             let func_def = FunctionDefinition {
                                 id: constructor_id,
                                 arguments,
-                                bodies: vec![(Pattern::empty(), Expression::TypeConstructor(type_id, *variant_id, constructor_id, argument_expressions))],
+                                bodies: vec![(Pattern::empty(), Rc::new(Expression::TypeConstructor(type_id, *variant_id, constructor_id, argument_expressions)))],
                             };
                             self.program.functions.insert(constructor_id, Rc::new(func_def));
                         }

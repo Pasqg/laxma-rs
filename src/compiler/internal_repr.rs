@@ -4,7 +4,7 @@ use std::{collections::HashSet, rc::Rc};
 use nohash_hasher::IntMap;
 
 use crate::{
-    parser::{ast::AST, token_stream::Token},
+    parser::ast::AST,
     utils::InsertionOrderHashMap,
 };
 
@@ -181,18 +181,18 @@ pub(super) struct Destructuring(
 #[derive(Debug, PartialEq, Clone)]
 pub(super) struct FunctionCall {
     pub(super) id: IdentifierId,
-    pub(super) arguments: Vec<Expression>,
+    pub(super) arguments: Vec<Rc<Expression>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub(super) enum Expression {
-    TypeConstructor(IdentifierId, IdentifierId, Vec<Expression>),
+    TypeConstructor(IdentifierId, IdentifierId, Vec<Rc<Expression>>),
     FunctionCall(FunctionCall),
     Identifier(IdentifierId),
     Integer(i64),
     Float(f32),
     String(Rc<String>),
-    WithBlock(Vec<(IdentifierId, Expression)>, Rc<Expression>),
+    WithBlock(Vec<(IdentifierId, Rc<Expression>)>, Rc<Expression>),
     Cast(Rc<Expression>, RcType),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
     LambdaExpression(Rc<FunctionDefinition>),
@@ -225,7 +225,7 @@ impl Pattern {
 pub(super) struct FunctionDefinition {
     pub(super) id: IdentifierId,
     pub(super) arguments: Vec<FunctionArgument>,
-    pub(super) bodies: Vec<(Pattern, Expression)>,
+    pub(super) bodies: Vec<(Pattern, Rc<Expression>)>,
 }
 
 impl FunctionDefinition {
@@ -412,7 +412,7 @@ fn signature_repr(
 pub fn expression_repr(
     ast: &AST<Rules>,
     identifier_map: &mut IdentifierIdMap,
-) -> Result<Expression, String> {
+) -> Result<Rc<Expression>, String> {
     if ast.id.is_none() || ast.id.unwrap() != Rules::Expression {
         return Err(format!("Expected Expression but got {:?}", ast.id));
     }
@@ -421,16 +421,16 @@ pub fn expression_repr(
     let rule = body.id;
 
     match rule {
-        Some(Rules::Identifier) => Ok(Expression::Identifier(
+        Some(Rules::Identifier) => Ok(Rc::new(Expression::Identifier(
             identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
-        )),
-        Some(Rules::Integer) => Ok(Expression::Integer(
+        ))),
+        Some(Rules::Integer) => Ok(Rc::new(Expression::Integer(
             ast.matched[0].unwrap_str().parse().unwrap(),
-        )),
-        Some(Rules::String) => Ok(Expression::String(Rc::new(ast.matched[0].unwrap_str()))),
-        Some(Rules::Float) => Ok(Expression::Float(
+        ))),
+        Some(Rules::String) => Ok(Rc::new(Expression::String(Rc::new(ast.matched[0].unwrap_str())))),
+        Some(Rules::Float) => Ok(Rc::new(Expression::Float(
             ast.matched[0].unwrap_str().parse().unwrap(),
-        )),
+        ))),
         Some(Rules::FunctionCall) => {
             let mut parameters = Vec::new();
             for child in &body.children[2].children {
@@ -438,10 +438,10 @@ pub fn expression_repr(
                     parameters.push(expression_repr(child, identifier_map)?);
                 }
             }
-            Ok(Expression::FunctionCall(FunctionCall {
+            Ok(Rc::new(Expression::FunctionCall(FunctionCall {
                 id: identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
                 arguments: parameters,
-            }))
+            })))
         }
         Some(Rules::TypeConstructor) => {
             let mut parameters = Vec::new();
@@ -450,11 +450,12 @@ pub fn expression_repr(
                     parameters.push(expression_repr(child, identifier_map)?);
                 }
             }
-            Ok(Expression::TypeConstructor(
+            // todo: could change to function call with id Type.Variant, although will be slower
+            Ok(Rc::new(Expression::TypeConstructor(
                 identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
                 identifier_map.get_id(&Rc::new(ast.matched[2].unwrap_str())),
                 parameters,
-            ))
+            )))
         }
         Some(Rules::WithBlock) => {
             let mut elements = Vec::new();
@@ -464,24 +465,24 @@ pub fn expression_repr(
                 elements.push((identifier_map.get_id(&Rc::new(identifier)), expr));
             }
             let result = expression_repr(&body.children[2], identifier_map)?;
-            Ok(Expression::WithBlock(elements, Rc::new(result)))
+            Ok(Rc::new(Expression::WithBlock(elements, result)))
         }
         Some(Rules::IfExpression) => {
             let condition = expression_repr(&body.children[1], identifier_map)?;
             let true_branch = expression_repr(&body.children[2], identifier_map)?;
             let false_branch = expression_repr(&body.children[3], identifier_map)?;
 
-            Ok(Expression::If(
-                Rc::new(condition),
-                Rc::new(true_branch),
-                Rc::new(false_branch),
-            ))
+            Ok(Rc::new(Expression::If(
+                condition,
+                true_branch,
+                false_branch,
+            )))
         }
         Some(Rules::CastExpression) => {
             let expression = expression_repr(&body.children[1], identifier_map)?;
             let type_cast = type_repr(&body.children[3], identifier_map)?;
 
-            Ok(Expression::Cast(Rc::new(expression), Rc::new(type_cast)))
+            Ok(Rc::new(Expression::Cast(expression, Rc::new(type_cast))))
         }
         Some(Rules::LambdaExpression) => {
             let result = arguments_repr(&body.children[1], identifier_map);
@@ -502,7 +503,7 @@ pub fn expression_repr(
             }
             let expr = result.unwrap();
 
-            Ok(Expression::LambdaExpression(Rc::new(FunctionDefinition {
+            Ok(Rc::new(Expression::LambdaExpression(Rc::new(FunctionDefinition {
                 id: identifier_map.get_id(&Rc::new(
                     body.matched
                         .iter()
@@ -519,7 +520,7 @@ pub fn expression_repr(
                 )),
                 arguments: args,
                 bodies: vec![(Pattern::empty(), expr)],
-            })))
+            }))))
         }
         _ => Err(format!(
             "Expected WithExpression, IfExpression, FunctionCall, Identifier or Number, but got {}",
@@ -531,7 +532,7 @@ pub fn expression_repr(
 fn pattern_matching_repr(
     ast: &AST<Rules>,
     identifier_map: &mut IdentifierIdMap,
-) -> Result<Vec<(Pattern, Expression)>, String> {
+) -> Result<Vec<(Pattern, Rc<Expression>)>, String> {
     let mut bodies = Vec::new();
     for pattern in &ast.children {
         if pattern.id != Some(Rules::Pattern) {
