@@ -21,6 +21,7 @@ use super::internal_repr::{
     Program,
 };
 use super::lexer::Lexer;
+use super::optimiser::optimise_function;
 use super::type_system::{
     infer_expression_type, infer_function_definition_type, verify_type_definition, TypeInfo,
 };
@@ -171,6 +172,7 @@ impl REPL {
                 self.program.types.insert(type_id, definition);
             }
 
+            let mut function_definitions = Vec::new();
             for key in functions.keys() {
                 let (id, definition) = (key, functions.get(key.as_ref()).unwrap());
                 let function_type = infer_function_definition_type(
@@ -186,18 +188,21 @@ impl REPL {
                     function_type.full_repr(&self.program.identifier_id_map)
                 );
 
-                self.program.functions.insert(**id, Rc::clone(definition));
+                function_definitions.push(Rc::clone(definition));
                 self.type_info.function_types.insert(**id, function_type);
             }
 
             if RUN_OPTIMISER {
-                for id in self.program.functions.keys().clone() {
-                    let definition = self.program.functions.get(&id).unwrap();
+                for definition in &function_definitions {
                     let optimised = optimise_function(&self.program, definition);
                     println!("{:?}", optimised);
                     self.program
                         .functions
-                        .insert(*id.as_ref(), optimised);
+                        .insert(optimised.id, optimised);
+                }
+            } else {
+                for definition in &function_definitions {
+                    self.program.functions.insert(definition.id, Rc::clone(definition));
                 }
             }
 
