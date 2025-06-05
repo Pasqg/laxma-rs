@@ -124,7 +124,6 @@ impl REPL {
                                     Rc::new(Expression::TypeConstructor(
                                         type_id,
                                         *variant_id,
-                                        constructor_id,
                                         Vec::new(),
                                     )),
                                 )],
@@ -157,7 +156,6 @@ impl REPL {
                                     Rc::new(Expression::TypeConstructor(
                                         type_id,
                                         *variant_id,
-                                        constructor_id,
                                         argument_expressions,
                                     )),
                                 )],

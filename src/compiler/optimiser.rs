@@ -6,7 +6,7 @@ use super::{
     identifier_map::{
         IdentifierId, IdentifierIdMap
     },
-    internal_repr::{Expression, FunctionDefinition, Program},
+    internal_repr::{Expression, FunctionCall, FunctionDefinition, Program},
 };
 
 pub fn optimise_function(
@@ -39,6 +39,56 @@ fn optimise_expression(
     expr
 }
 
+fn substitute_bindings(
+    bindings: &IntMap<IdentifierId, Rc<Expression>>,
+    expr: &Rc<Expression>,
+) -> Rc<Expression> {
+    match expr.as_ref() {
+        Expression::TypeConstructor(type_id, variant_id, expressions) => {
+            Rc::new(Expression::TypeConstructor(
+                *type_id,
+                *variant_id,
+                expressions
+                    .iter()
+                    .map(|expr| substitute_bindings(bindings, expr))
+                    .collect(),
+            ))
+        }
+        Expression::FunctionCall(function_call) => {
+            Rc::new(Expression::FunctionCall(FunctionCall {
+                id: function_call.id,
+                arguments: function_call
+                    .arguments
+                    .iter()
+                    .map(|expr| substitute_bindings(bindings, expr))
+                    .collect(),
+            }))
+        }
+        Expression::Identifier(id) => bindings
+            .get(id)
+            .map_or_else(|| Rc::clone(expr), |expr| Rc::clone(expr)),
+        Expression::WithBlock(items, expression) => Rc::new(Expression::WithBlock(
+            items
+                .iter()
+                .map(|(binding_id, expr)| (*binding_id, substitute_bindings(bindings, expr)))
+                .collect(),
+            substitute_bindings(bindings, expression),
+        )),
+        Expression::Cast(expression, t) => Rc::new(Expression::Cast(
+            substitute_bindings(bindings, expression),
+            Rc::clone(t),
+        )),
+        Expression::If(condition, true_branch, false_branch) => Rc::new(Expression::If(
+            substitute_bindings(bindings, condition),
+            substitute_bindings(bindings, true_branch),
+            substitute_bindings(bindings, false_branch),
+        )),
+        //todo: might need to replace expressions?
+        Expression::LambdaExpression(function_definition) => Rc::clone(expr),
+        _ => Rc::clone(expr),
+    }
+}
+
 /*
  * Returns Some if an optimised expression can be created, otherwise None
  */
@@ -50,16 +100,16 @@ fn expression_inline_optimiser(
 ) -> Rc<Expression> {
     match expr.as_ref() {
         Expression::FunctionCall(function_call) => {
+            // Skip recursive calls
+            if function_call.id == caller_id {
+                return Rc::clone(expr);
+            }
+
             // Skip builtins
             if IdentifierIdMap::new()
                 .get_identifier(&function_call.id)
                 .is_some()
             {
-                return Rc::clone(expr);
-            }
-
-            // Skip recursive calls
-            if function_call.id == caller_id {
                 return Rc::clone(expr);
             }
 
@@ -76,12 +126,14 @@ fn expression_inline_optimiser(
             }
 
             if function_call.arguments.is_empty() {
-                expression_inline_optimiser(
+                let optimised = expression_inline_optimiser(
                     program,
                     function_call.id,
                     caller_bindings,
                     &function_definition.bodies[0].1,
-                )
+                );
+
+                substitute_bindings(&caller_bindings, &optimised)
             } else {
                 if function_call.arguments.len() != function_definition.arguments.len() {
                     return Rc::clone(expr);
@@ -91,16 +143,18 @@ fn expression_inline_optimiser(
                 for i in 0..function_call.arguments.len() {
                     bindings.insert(
                         function_definition.arguments[i].identifier,
-                        Rc::clone(&function_call.arguments[i]),
+                        optimise_expression(program, caller_id, caller_bindings, &function_call.arguments[i]),
                     );
                 }
 
-                expression_inline_optimiser(
+                let optimised = expression_inline_optimiser(
                     program,
                     function_call.id,
                     &bindings,
                     &function_definition.bodies[0].1,
-                )
+                );
+
+                substitute_bindings(&bindings, &optimised)
             }
         }
         /*
@@ -127,11 +181,10 @@ fn expression_inline_optimiser(
                 Rc::clone(expr)
             }
         }
-        Expression::TypeConstructor(type_id, variant_id, constructor_id, expressions) => {
+        Expression::TypeConstructor(type_id, variant_id, expressions) => {
             Rc::new(Expression::TypeConstructor(
                 *type_id,
                 *variant_id,
-                *constructor_id,
                 expressions
                     .iter()
                     .map(|expr| optimise_expression(program, caller_id, caller_bindings, expr))
