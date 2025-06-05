@@ -4,7 +4,8 @@ use nohash_hasher::IntMap;
 
 use super::{
     identifier_map::{
-        IdentifierId, IdentifierIdMap
+        IdentifierId, IdentifierIdMap, EXP_ID, FADD_ID, FDIV_ID, FMUL_ID, FSUB_ID, IADD_ID,
+        IDIV_ID, IMUL_ID, ISUB_ID, LOG_ID, POW_ID,
     },
     internal_repr::{Expression, FunctionCall, FunctionDefinition, Program},
 };
@@ -36,6 +37,7 @@ fn optimise_expression(
     expr: &Rc<Expression>,
 ) -> Rc<Expression> {
     let expr = expression_inline_optimiser(program, caller_id, caller_bindings, &expr);
+    let expr = expression_const_expr_optimiser(&expr);
     expr
 }
 
@@ -204,4 +206,69 @@ fn expression_inline_optimiser(
             optimise_function(program, function_definition),
         )),
     }
+}
+
+// Computes compile time constant expressions and substitutes its value directly
+fn expression_const_expr_optimiser(expr: &Rc<Expression>) -> Rc<Expression> {
+    match expr.as_ref() {
+        Expression::FunctionCall(function_call) => {
+            let args = function_call
+                .arguments
+                .iter()
+                .map(|expr| expression_const_expr_optimiser(expr))
+                .collect::<Vec<Rc<Expression>>>();
+            let result = match function_call.id {
+                EXP_ID => float_expr(expr, &[&args[0]], |args| args[0].exp()),
+                LOG_ID => float_expr(expr, &[&args[0]], |args| args[0].ln()),
+                POW_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0].powf(args[1])),
+                IADD_ID => int_expr(expr, &[&args[0], &args[1]], |args| args[0] + args[1]),
+                IMUL_ID => int_expr(expr, &[&args[0], &args[1]], |args| args[0] * args[1]),
+                ISUB_ID => int_expr(expr, &[&args[0], &args[1]], |args| args[0] - args[1]),
+                IDIV_ID => int_expr(expr, &[&args[0], &args[1]], |args| args[0] / args[1]),
+                FADD_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0] + args[1]),
+                FMUL_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0] * args[1]),
+                FSUB_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0] - args[1]),
+                FDIV_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0] / args[1]),
+                _ => Rc::clone(expr),
+            };
+            return result;
+        }
+        _ => Rc::clone(expr),
+    }
+}
+
+fn float_expr<F>(default: &Rc<Expression>, expressions: &[&Rc<Expression>], f: F) -> Rc<Expression>
+where
+    F: FnOnce(&[f32]) -> f32,
+{
+    for expr in expressions {
+        match expr.as_ref() {
+            Expression::Float(_) => {}
+            _ => return Rc::clone(default),
+        }
+    }
+
+    let args = expressions
+        .iter()
+        .map(|expr| expr.as_float())
+        .collect::<Vec<f32>>();
+    Rc::new(Expression::Float(f(&args)))
+}
+
+fn int_expr<F>(default: &Rc<Expression>, expressions: &[&Rc<Expression>], f: F) -> Rc<Expression>
+where
+    F: FnOnce(&[i64]) -> i64,
+{
+    for expr in expressions {
+        match expr.as_ref() {
+            Expression::Integer(_) => {}
+            _ => return Rc::clone(default),
+        }
+    }
+
+    let args = expressions
+        .iter()
+        .map(|expr| expr.as_int())
+        .collect::<Vec<i64>>();
+    Rc::new(Expression::Integer(f(&args)))
 }

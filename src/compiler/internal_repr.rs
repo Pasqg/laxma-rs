@@ -3,10 +3,7 @@ use std::{collections::HashSet, rc::Rc};
 
 use nohash_hasher::IntMap;
 
-use crate::{
-    parser::ast::AST,
-    utils::InsertionOrderHashMap,
-};
+use crate::{parser::ast::AST, utils::InsertionOrderHashMap};
 
 use super::{
     grammar::Rules,
@@ -196,6 +193,22 @@ pub(super) enum Expression {
     Cast(Rc<Expression>, RcType),
     If(Rc<Expression>, Rc<Expression>, Rc<Expression>),
     LambdaExpression(Rc<FunctionDefinition>),
+}
+
+impl Expression {
+    pub(super) fn as_float(&self) -> f32 {
+        match self {
+            Self::Float(x) => *x,
+            _ => panic!("Expression not a Float"),
+        }
+    }
+
+    pub(super) fn as_int(&self) -> i64 {
+        match self {
+            Self::Integer(x) => *x,
+            _ => panic!("Expression not a Int"),
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -427,7 +440,9 @@ pub fn expression_repr(
         Some(Rules::Integer) => Ok(Rc::new(Expression::Integer(
             ast.matched[0].unwrap_str().parse().unwrap(),
         ))),
-        Some(Rules::String) => Ok(Rc::new(Expression::String(Rc::new(ast.matched[0].unwrap_str())))),
+        Some(Rules::String) => Ok(Rc::new(Expression::String(Rc::new(
+            ast.matched[0].unwrap_str(),
+        )))),
         Some(Rules::Float) => Ok(Rc::new(Expression::Float(
             ast.matched[0].unwrap_str().parse().unwrap(),
         ))),
@@ -503,24 +518,26 @@ pub fn expression_repr(
             }
             let expr = result.unwrap();
 
-            Ok(Rc::new(Expression::LambdaExpression(Rc::new(FunctionDefinition {
-                id: identifier_map.get_id(&Rc::new(
-                    body.matched
-                        .iter()
-                        .map(|t| t.unwrap_str())
-                        .map(|t| {
-                            if t.as_str() == "->" {
-                                " -> ".to_string()
-                            } else {
-                                t
-                            }
-                        })
-                        .collect::<Vec<String>>()
-                        .join(""),
-                )),
-                arguments: args,
-                bodies: vec![(Pattern::empty(), expr)],
-            }))))
+            Ok(Rc::new(Expression::LambdaExpression(Rc::new(
+                FunctionDefinition {
+                    id: identifier_map.get_id(&Rc::new(
+                        body.matched
+                            .iter()
+                            .map(|t| t.unwrap_str())
+                            .map(|t| {
+                                if t.as_str() == "->" {
+                                    " -> ".to_string()
+                                } else {
+                                    t
+                                }
+                            })
+                            .collect::<Vec<String>>()
+                            .join(""),
+                    )),
+                    arguments: args,
+                    bodies: vec![(Pattern::empty(), expr)],
+                },
+            ))))
         }
         _ => Err(format!(
             "Expected WithExpression, IfExpression, FunctionCall, Identifier or Number, but got {}",
