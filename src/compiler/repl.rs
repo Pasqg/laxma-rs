@@ -288,8 +288,9 @@ impl REPL {
                             //todo: multiple "_" should also be considered wildcard
                             if *identifier != WILDCARD_ID {
                                 return Err(format!(
-                                    "Redundant re-binding '{}' of argument {i} in function '{}'",
+                                    "Redundant re-binding '{}' of argument {} in function '{}'",
                                     self.program.var_name(identifier),
+                                    i+1,
                                     self.program.var_name(function_id)
                                 ));
                             }
@@ -663,7 +664,7 @@ impl REPL {
                 for param in ordered_arg_values {
                     match param.value_to_str(&|id| Rc::clone(self.program.var_name(id))) {
                         Ok(val) => values.push(val),
-                        Err(err) => return Some(Err(format!("Cannot print argument {i}: {err}"))),
+                        Err(err) => return Some(Err(format!("Cannot print argument {}: {err}", i+1))),
                     }
                     i += 1;
                 }
@@ -1022,8 +1023,8 @@ mod tests {
             ("test(2)", ok("2")),
         ]));
         run_tests(&InsertionOrderHashMap::from([
-            ("fn + a:Int b:Int -> 0", ok("")),
-            ("fn test x:Int y:Int -> +(x y)", ok("")),
+            ("fn iadd a:Int b:Int -> 0", ok("")),
+            ("fn test x:Int y:Int -> iadd(x y)", ok("")),
             ("test(2 3)", ok("5")),
         ]));
     }
@@ -1038,7 +1039,7 @@ mod tests {
             ("fn test x:Int -> x", ok("")),
             ("test()", err("Function 'test' in caller 'REPL' expects 1 arguments but 0 were provided")),
             ("test(1 2)", err("Function 'test' in caller 'REPL' expects 1 arguments but 2 were provided")),
-            ("test(1.0)", err("Argument 0 in function 'test' in caller 'REPL' has type Int (bound to Int) but Float (bound to Float) was provided")),
+            ("test(1.0)", err("Argument 1 in function 'test' in caller 'REPL' expects type Int (bound to Int) but Float (bound to Float) was provided")),
         ]));
         run_test(
             "fn test x:Int y:Int -> List::A(x)",
@@ -1063,25 +1064,25 @@ mod tests {
     #[test]
     fn test_parametrised_function_type_errors() {
         run_tests(&InsertionOrderHashMap::from([
-            ("fn + a:Int b:Int -> 0", ok("")),
-            ("fn test x:'T y:'T -> +(x y)", ok("")),
+            ("fn iadd a:Int b:Int -> 0", ok("")),
+            ("fn test x:'T y:'T -> iadd(x y)", ok("")),
             ("test(2 1)", ok("3")),
-            ("test(2.2 1)", err("Argument 1 in function 'test' in caller 'REPL' has type Float (bound to 'T) but Int (bound to Int) was provided")),
+            ("test(2.2 1)", err("Argument 2 in function 'test' in caller 'REPL' expects type Float (bound to 'T) but Int (bound to Int) was provided")),
+            ("fn test x:'T y:'S -> iadd(x y)", ok("")),
         ]));
-        //todo: test fn test x:'T y:'S -> +(x y) because this crashes when calling test(1 1.1) (shouldn't allow 'T to bind 'S, they should always be considered different)
     }
 
     #[test]
     fn test_lambdas() {
         run_tests(&InsertionOrderHashMap::from([
-            ("fn + a:Int b:Int -> 0", ok("")),
-            ("fn * a:Int b:Int -> 0", ok("")),
+            ("fn iadd a:Int b:Int -> 0", ok("")),
+            ("fn imul a:Int b:Int -> 0", ok("")),
             (
                 "fn compose f:('Q)->'R g:('P)->'Q -> (x:'P)->f(g(x))",
                 ok(""),
             ),
-            ("fn f2 x:Int -> *(x 3)", ok("")),
-            ("fn g2 x:Int -> +(x 2)", ok("")),
+            ("fn f2 x:Int -> imul(x 3)", ok("")),
+            ("fn g2 x:Int -> iadd(x 2)", ok("")),
             ("compose(f2 g2)", ok("Function (x:'P) -> f(g(x))")),
             ("with h = compose(f2 g2) h(7)", ok("27")),
         ]));
@@ -1099,27 +1100,30 @@ mod tests {
     }
 
     #[test]
-    fn test_lambda_errors() {
+    fn test_compose_errors() {
         run_tests(&InsertionOrderHashMap::from([
-            ("fn + a:Int b:Int -> 0", ok("")),
-            ("fn * a:Int b:Int -> 0", ok("")),
+            ("fn iadd a:Int b:Int -> 0", ok("")),
+            ("fn imul a:Int b:Int -> 0", ok("")),
+            //todo: when calling f, g there are shadowing problems!
+            ("fn f2 x:Int -> imul(x 3)", ok("")),
+            ("fn g2 x:Int -> iadd(x 2)", ok("")),
+            ("fn f3 x:Float -> \"ok\"", ok("")),
+            ("fn g3 x:Int -> 2.2", ok("")),
             (
                 "fn compose f:('P)->'Q g:('Q)->'R -> (x:'P) -> g(f(x))",
                 ok(""),
             ),
-            //todo: when calling f, g there are shadowing problems!
-            ("fn f2 x:Int -> *(x 3)", ok("")),
-            ("fn g2 x:Int -> +(x 2)", ok("")),
             ("compose(f2 g2)", ok("Function (x:'P) -> g(f(x))")),
             ("with h = compose(f2 g2) h(7)", ok("23")),
             ("with h = compose(g2 f2) h(7)", ok("27")),
-            ("fn f3 x:Float -> \"ok\"", ok("")),
-            ("fn g3 x:Int -> 2.2", ok("")),
-            ("compose(f3 g3)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('Q) -> 'R (bound to ('Q) -> 'R) but (Int) -> Float (bound to (Int) -> Float) was provided")),
+            ("compose(f3 g3)", err("Argument 2 in function 'compose' in caller 'REPL' expects type (String) -> 'R (bound to ('Q) -> 'R) but (Int) -> Float (bound to (Int) -> Float) was provided")),
             ("compose(g3 f3)", ok("Function (x:'P) -> g(f(x))")),
             ("with h = compose(g3 f3) h(2)", ok("\"ok\""))
         ]));
+    }
 
+    #[test]
+    fn test_lambda_errors() {
         run_tests(&InsertionOrderHashMap::from([
             //todo: should error out
             (
@@ -1128,8 +1132,7 @@ mod tests {
             ),
             ("fn f3 x:Float -> \"ok\"", ok("")),
             ("fn g3 x:Int -> 2.2", ok("")),
-            ("compose(f3 g3)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('Q) -> 'R (bound to ('Q) -> 'R) but (Int) -> Float (bound to (Int) -> Float) was provided")),
-            //todo: should error out
+            ("compose(f3 g3)", err("Argument 2 in function 'compose' in caller 'REPL' expects type (String) -> 'R (bound to ('Q) -> 'R) but (Int) -> Float (bound to (Int) -> Float) was provided")),
             ("compose(g3 f3)", ok("Function (x:'P) -> f(g(x))")),
         ]));
 
@@ -1140,10 +1143,10 @@ mod tests {
             ),
             ("fn f2 x:Int -> 2.2", ok("")),
             ("fn g2 x:Float -> \"ok\"", ok("")),
-            ("compose(f2 g2)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('P) -> 'Q (bound to ('P) -> 'Q) but (Float) -> String (bound to (Float) -> String) was provided")),
+            ("compose(f2 g2)", err("Argument 2 in function 'compose' in caller 'REPL' expects type (Float) -> Int (bound to ('P) -> 'Q) but (Float) -> String (bound to (Float) -> String) was provided")),
             ("compose(g2 f2)", ok("Function (x:'P) -> f(g(x))")),
-            ("compose(f2 f2)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('P) -> 'Q (bound to ('P) -> 'Q) but (Int) -> Float (bound to (Int) -> Float) was provided")),
-            ("compose(g2 g2)", err("Argument 1 in function 'compose' in caller 'REPL' has type ('P) -> 'Q (bound to ('P) -> 'Q) but (Float) -> String (bound to (Float) -> String) was provided")),
+            ("compose(f2 f2)", err("Argument 2 in function 'compose' in caller 'REPL' expects type (Int) -> Int (bound to ('P) -> 'Q) but (Int) -> Float (bound to (Int) -> Float) was provided")),
+            ("compose(g2 g2)", err("Argument 2 in function 'compose' in caller 'REPL' expects type (Float) -> Float (bound to ('P) -> 'Q) but (Float) -> String (bound to (Float) -> String) was provided")),
         ]));
     }
 

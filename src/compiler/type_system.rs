@@ -206,8 +206,8 @@ impl TypeParameterBindings {
 
                 let binding =
                     TypeParameterBindings::find_most_concrete(&abstract_t, &self.bindings);
-                if &binding != abstract_t && self.is_subtype(concrete_t, &binding) {
-                    return true;
+                if &binding != abstract_t {
+                    return self.is_subtype(concrete_t, &binding);
                 }
                 self.bindings.insert(abstract_t.id(), Rc::clone(concrete_t));
                 true
@@ -314,7 +314,8 @@ fn concretize_function_type(
                 let arg_type = &arg_types[i];
                 if !type_parameters_bindings.is_subtype(&parameters[i], &arg_type) {
                     return Err(format!(
-                        "Argument {i} in function '{}' in caller '{}' has type {} (bound to {}) but {} (bound to {}) was provided",
+                        "Argument {} in function '{}' in caller '{}' expects type {} (bound to {}) but {} (bound to {}) was provided",
+                        i+1,
                         program.var_name(function_id),
                         program.var_name(caller_id),
                         TypeParameterBindings::concretize(arg_type, &type_parameters_bindings.bindings)
@@ -648,7 +649,10 @@ pub fn infer_expression_type(
                     type_cast.full_repr(&program.identifier_id_map)
                 ));
             }
-            Ok(TypeParameterBindings::concretize(type_cast, &bindings.bindings))
+            Ok(TypeParameterBindings::concretize(
+                type_cast,
+                &bindings.bindings,
+            ))
         }
         Expression::If(condition, when_true, when_false) => {
             let result = infer_expression_type(
