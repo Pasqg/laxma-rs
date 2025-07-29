@@ -17,12 +17,13 @@ impl Lexer {
         let lines: Vec<&str> = input.split("\n").collect();
         let mut matches = Vec::new();
         for i in 0..lines.len() {
-            let line = lines[i];
-
-            re.find_iter(line)
-                .map(|m| Token::str(m.as_str().trim(), TokenInfo::new(i + 1, m.start() + 1)))
-                .filter(|token| !token.unwrap_str().is_empty())
-                .for_each(|token| matches.push(token));
+            let line = lines[i].trim();
+            if !line.starts_with("#") {
+                re.find_iter(line)
+                    .map(|m| Token::str(m.as_str().trim(), TokenInfo::new(i + 1, m.start() + 1)))
+                    .filter(|token| !token.unwrap_str().is_empty())
+                    .for_each(|token| matches.push(token));
+            }
         }
 
         let last_info = if matches.is_empty() {

@@ -7,6 +7,7 @@ A simple functional programming language with rust backend.
 The grammar is designed to be concise and non-ambiguous. It has to be easy to read and quick to write. For this reason:
 - Indentation is not syntactically meaningful
 - Only whitespaces should separate tokens as much possible (minimum amount of parentheses, no end of statement tokens)
+- Comments are single line python-style starting with #. This is in order to seamlessly supporting shebang in unix shell
 
 ## Types
 
