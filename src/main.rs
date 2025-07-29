@@ -1,3 +1,4 @@
+use std::env;
 use std::io::{Read, Write};
 use std::fs::{metadata, read_dir};
 use std::time::Instant;
@@ -52,8 +53,7 @@ fn load_file(repl: &mut REPL, file_name: &str) {
     }
 }
 
-fn main() {
-    let mut repl = REPL::new();
+fn start_repl(repl: &mut REPL) {
     loop {
         print!("laxma> ");
         std::io::stdout().flush().unwrap();
@@ -69,7 +69,22 @@ fn main() {
         }
 
         let start = Instant::now();
-        execute_input(&mut repl, input);
+        execute_input(repl, input);
         println!("Done in {}ms", start.elapsed().as_millis());
+    }
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let mut repl = REPL::new();
+    if args.len() <= 1 {
+        start_repl(&mut repl);
+    } else {
+        let file_name = &args[1];
+        load_file(&mut repl, &file_name);
+        let result = repl.handle_input("main()");
+        if result.is_err() {
+            println!("ERROR for '{}': {}", file_name, result.unwrap_err());
+        }
     }
 }

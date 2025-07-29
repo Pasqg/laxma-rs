@@ -2,12 +2,16 @@
 
 A simple functional programming language with rust backend.
 
-## Basic syntax
-
 The grammar is designed to be concise and non-ambiguous. It has to be easy to read and quick to write. For this reason:
 - Indentation is not syntactically meaningful
 - Only whitespaces should separate tokens as much possible (minimum amount of parentheses, no end of statement tokens)
 - Comments are single line python-style starting with #. This is in order to seamlessly supporting shebang in unix shell
+
+## Index
+
+- [Types](#types)
+- [Functions](#functions)
+- [Running Laxma](#running-laxma)
 
 ## Types
 
@@ -252,18 +256,44 @@ fn quick_sort x : IntList =
             concat ( quick_sort ( left ) concat ( list ( pivot ) quick_sort ( right ) ) )
 ```
 
-## REPL
+## Running Laxma
 
-Running the REPL with cargo is straightforward:
+Laxma can be built using cargo:
+```
+cargo build
+```
+
+This will generate a `laxma-rs` executable in `/target` folder. 
+
+Running laxma without arguments opens the REPL:
+```
+laxma-rs
+```
+
+Running laxma with one argument will run a single file, which is expected to define a `main()` function:
+```
+laxma-rs example.m
+```
+
+If the argument is a folder name, all the files in the folder will be executed.
+
+Laxma can also be run directly from source code with cargo:
+
+For repl:
 ```
 cargo run
+```
+
+For single file:
+```
+cargo run -- example.m
 ```
 
 ### Commands
 
 | Command | Description |
 | --- | --- |
-| /load | Loads one or multiple files or directories into the REPL |
+| /load | Loads one or multiple files or directories into the environment |
 | /quit, /exit | Closes the REPL |
 
 ### Loading builtins
