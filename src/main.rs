@@ -82,7 +82,8 @@ fn main() {
     } else {
         let file_name = &args[1];
         load_file(&mut repl, &file_name);
-        let result = repl.handle_input("main()");
+        let args_string = args.iter().skip(2).map(String::from).collect::<Vec<String>>().join(" ");
+        let result = repl.handle_input(&format!("main({args_string})"));
         if result.is_err() {
             println!("ERROR for '{}': {}", file_name, result.unwrap_err());
         }
