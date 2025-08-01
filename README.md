@@ -289,6 +289,10 @@ For single file:
 cargo run -- example.m
 ```
 
+### Examples
+
+Some examples are available in the [examples](./examples/) folder.
+
 ### Commands
 
 | Command | Description |
