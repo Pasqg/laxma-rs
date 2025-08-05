@@ -517,6 +517,94 @@ pub fn infer_expression_type(
                 }
             }
 
+            let dispatch = program.dispatches.get(&function_call.id);
+            if dispatch.is_some() {
+                // Clone needed due to immutable borrow of program
+                let dispatch = Rc::clone(dispatch.unwrap());
+
+                if function_call.arguments.len() != dispatch.arguments.len() {
+                    return Err(format!(
+                        "Dispatch {} expects {} arguments but {} were provided",
+                        program.var_name(&function_call.id),
+                        dispatch.arguments.len(),
+                        function_call.arguments.len(),
+                    ));
+                }
+
+                let mut arg_types = Vec::new();
+                for arg in &function_call.arguments {
+                    let arg_type = infer_expression_type(
+                        arg,
+                        program,
+                        type_info,
+                        identifier_types,
+                        external_type_vars,
+                        current_function_id,
+                    )?;
+                    arg_types.push(arg_type);
+                }
+
+                for (pattern, expression) in &dispatch.bodies {
+                    if pattern.components.len() != dispatch.arguments.len() {
+                        return Err(format!(
+                            "Dispatch {} has {} arguments but {} found in pattern",
+                            program.var_name(&function_call.id),
+                            dispatch.arguments.len(),
+                            pattern.components.len(),
+                        ));
+                    }
+
+                    let mut matching_args = 0;
+                    for i in 0..pattern.components.len() {
+                        match &pattern.components[i] {
+                            DestructuringComponent::Identifier(type_id) => {
+                                if arg_types[i].id() != *type_id {
+                                    continue;
+                                }
+                                matching_args += 1
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Expected only type names in dispatch {}",
+                                    program.var_name(&function_call.id),
+                                ));
+                            }
+                        }
+                    }
+
+                    if matching_args == dispatch.arguments.len() {
+                        let mut identifier_types = identifier_types.as_ref().clone();
+                        for i in 0..dispatch.arguments.len() {
+                            let arg_type = Rc::clone(&arg_types[i]);
+                            identifier_types.insert(dispatch.arguments[i], arg_type);
+                        }
+                        return infer_expression_type(
+                            expression,
+                            program,
+                            type_info,
+                            &Rc::new(identifier_types),
+                            external_type_vars,
+                            current_function_id,
+                        );
+                    }
+                }
+
+                return Err(format!(
+                    "Dispatch {} is not defined for arguments '{}'",
+                    program.var_name(&function_call.id),
+                    arg_types
+                        .iter()
+                        .map(|t| program
+                            .identifier_id_map
+                            .get_identifier(&t.id())
+                            .unwrap()
+                            .as_ref()
+                            .to_owned())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ));
+            }
+
             Err(format!(
                 "Undefined identifier '{}' in function '{}', known '{:?}'",
                 program.var_name(&function_call.id),

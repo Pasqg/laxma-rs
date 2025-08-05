@@ -11,6 +11,7 @@ The grammar is designed to be concise and non-ambiguous. It has to be easy to re
 
 - [Types](#types)
 - [Functions](#functions)
+- [Dispatches](#dispatches)
 - [Running Laxma](#running-laxma)
 
 ## Types
@@ -255,6 +256,22 @@ fn quick_sort x : IntList =
             right = filter ( bigger xs )
             concat ( quick_sort ( left ) concat ( list ( pivot ) quick_sort ( right ) ) )
 ```
+
+## Dispatches
+
+Dispatches are a separate class of objects which only really exist at compile time.
+A dispatch can be seen as a type matching function. It defines a behaviour common to multiple types, but it inverts the relationship compared to super types like interfaces or traits.
+
+An example of a very important dispatch:
+```
+dispatch + x y =
+    Float, Float -> fadd(x y)
+    Int, Int -> iadd(x y)
+```
+
+The above dispatch is effectively implementing an overloading of the function +, however + function doesn't exist and instead it will be swapped with the corresponding implementation based on the caller argument types, which are known at compile time. Furthermore, the dispatch could potentially be extended to dispatch on generic values, much like clojure multimethods. 
+
+At the moment, there is no optimisation, and instead we evaluate the dispatches as special kinds of functions by dispatching on the type name, so type variables are erased.
 
 ## Running Laxma
 

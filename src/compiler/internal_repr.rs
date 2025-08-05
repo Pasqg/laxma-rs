@@ -247,9 +247,17 @@ impl FunctionDefinition {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub(super) struct DispatchDefinition {
+    pub(super) id: IdentifierId,
+    pub(super) arguments: Vec<IdentifierId>,
+    pub(super) bodies: Vec<(Pattern, Rc<Expression>)>,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct Program {
     pub(super) functions: InsertionOrderHashMap<IdentifierId, Rc<FunctionDefinition>>,
+    pub(super) dispatches: InsertionOrderHashMap<IdentifierId, Rc<DispatchDefinition>>,
     pub(super) types: IntMap<IdentifierId, TypeDefinition>,
     pub(super) identifier_id_map: IdentifierIdMap,
 }
@@ -258,6 +266,7 @@ impl Program {
     pub(super) fn new() -> Self {
         Self {
             functions: InsertionOrderHashMap::new(),
+            dispatches: InsertionOrderHashMap::new(),
             types: IntMap::default(),
             identifier_id_map: IdentifierIdMap::new(),
         }
@@ -693,6 +702,62 @@ fn type_definition_repr(
     Ok((type_rc.id(), definition))
 }
 
+fn dispatch_signature_repr(
+    ast: &AST<Rules>,
+    identifier_id_map: &mut IdentifierIdMap,
+) -> Result<(String, Vec<IdentifierId>), String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::Dispatch {
+        return Err(format!(
+            "Expected a Dispatch signature AST but got {:?}",
+            ast.id
+        ));
+    }
+
+    let dispatch_name = ast.matched[1].unwrap_str();
+    let mut arguments = Vec::new();
+    for child in &ast.children[2].children {
+        if !child.matched.is_empty() {
+            let token = child.matched[0].unwrap_str();
+            if token != "," {
+                arguments.push(identifier_id_map.get_id(&Rc::new(token)));
+            }
+        }
+    }
+
+    Ok((dispatch_name, arguments))
+}
+
+fn dispatch_repr(
+    ast: &AST<Rules>,
+    identifier_map: &mut IdentifierIdMap,
+) -> Result<DispatchDefinition, String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::Dispatch {
+        return Err(format!("Expected a Dispatch AST but got {:?}", ast.id));
+    }
+
+    let (name, arguments) = dispatch_signature_repr(&ast.children[0], identifier_map)?;
+
+    let body = &ast.children[1];
+    if body.id.is_none() {
+        return Err(format!("Expected 'Some' dispatch body"));
+    }
+    let rule = body.id.unwrap();
+
+    if rule != Rules::PatternMatching {
+        return Err(format!(
+            "Expected FunctionBody or PatternMatching but got {}",
+            body
+        ));
+    }
+
+    let definition = DispatchDefinition {
+        id: identifier_map.get_id(&Rc::new(name)),
+        arguments,
+        bodies: pattern_matching_repr(&body.children[1], identifier_map)?,
+    };
+    Ok(definition)
+}
+
 pub fn to_repr(
     ast: &AST<Rules>,
     identifier_id_map: &mut IdentifierIdMap,
@@ -702,6 +767,7 @@ pub fn to_repr(
     }
 
     let mut functions = InsertionOrderHashMap::new();
+    let mut dispatches = InsertionOrderHashMap::new();
     let mut types = IntMap::default();
     for node in &ast.children {
         match node.id {
@@ -713,9 +779,13 @@ pub fn to_repr(
                 let (id, definition) = type_definition_repr(node, identifier_id_map)?;
                 types.insert(id, definition);
             }
+            Some(Rules::Dispatch) => {
+                let definition = dispatch_repr(node, identifier_id_map)?;
+                dispatches.insert(definition.id, Rc::new(definition));
+            }
             _ => {
                 return Err(format!(
-                    "Expected FunctionDefinition or TypeDefinition at top level but got {:?}",
+                    "Expected function, type or dispatch at top level but got {:?}",
                     node.id
                 ));
             }
@@ -724,6 +794,7 @@ pub fn to_repr(
 
     Ok(Program {
         functions,
+        dispatches,
         types,
         identifier_id_map: identifier_id_map.clone(),
     })

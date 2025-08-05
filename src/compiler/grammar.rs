@@ -28,6 +28,7 @@ pub enum Rules {
     FunctionSignature,
     FunctionBody,
 
+    Dispatch,
     FunctionDef,
     Pattern,
     PatternMatching,
@@ -64,6 +65,7 @@ fn identifier() -> Combinators<Rules> {
             slit("type"),
             slit("with"),
             slit("if"),
+            slit("dispatch"),
             slit("cast"),
             slit("as"),
         ]),
@@ -383,7 +385,7 @@ fn function_pattern_matching() -> Combinators<Rules> {
                             aborting(
                                 function_body(),
                                 format!(
-                                    "Expecting function body after pattern at {{line}}:{{col}}"
+                                    "Expecting function body after pattern at {{line}}:{{col}} but got {{token}}"
                                 ),
                             ),
                         ],
@@ -391,7 +393,7 @@ fn function_pattern_matching() -> Combinators<Rules> {
                     None,
                 ),
                 format!(
-                    "Expecting at least one pattern after function signature at {{line}}:{{col}}"
+                    "Expecting at least one pattern after pattern matching at {{line}}:{{col}} but got {{token}}"
                 ),
             ),
         ],
@@ -411,6 +413,40 @@ fn function_def() -> Combinators<Rules> {
     )
 }
 
+fn dispatch_signature() -> Combinators<Rules> {
+    and_match(
+        Rules::Dispatch,
+        vec![
+            slit("dispatch"),
+            aborting(
+                identifier(),
+                format!("Expecting identifier after dispatch at {{line}}:{{col}} but got {{token}}"),
+            ),
+            aborting(
+                at_least_one(
+                    Some(Rules::Arguments),
+                    exclude(identifier(), slit("=")),
+                    None,
+                ),
+                format!("Expecting list of identifiers after dispatch function name at {{line}}:{{col}}"),
+            ),
+        ],
+    )
+}
+
+fn dispatch() -> Combinators<Rules> {
+    and_match(
+        Rules::Dispatch,
+        vec![
+            dispatch_signature(),
+            aborting(
+                function_pattern_matching(),
+                format!("Expecting dispatch body after dispatch signature at {{line}}:{{col}} but got {{token}}"),
+            ),
+        ],
+    )
+}
+
 fn type_def() -> Combinators<Rules> {
     and_match(
         Rules::TypeDef,
@@ -418,11 +454,11 @@ fn type_def() -> Combinators<Rules> {
             slit("type"),
             aborting(
                 type_name(),
-                format!("Expected a type after 'type' at {{line}}:{{col}}"),
+                format!("Expected a type after 'type' at {{line}}:{{col}} but got {{token}}"),
             ),
             aborting(
                 slit("->"),
-                format!("Expected '->' after type name in type definition at {{line}}:{{col}}"),
+                format!("Expected '->' after type name in type definition at {{line}}:{{col}} but got {{token}}"),
             ),
             aborting(
                 at_least_one(
@@ -442,7 +478,7 @@ fn type_def() -> Combinators<Rules> {
 pub fn program_parser() -> Combinators<Rules> {
     many(
         Some(Rules::Program),
-        aborting(or_match_flat(vec![function_def(), type_def()]),
+        aborting(or_match_flat(vec![function_def(), type_def(), dispatch()]),
         format!("Expected only function or type definitions but got syntax error at {{line}}:{{col}}")),
         None,
     )

@@ -2,6 +2,8 @@ use std::{fmt::Display, mem, rc::Rc};
 
 use nohash_hasher::IntMap;
 
+use crate::compiler::identifier_map::{BOOL_ID, FLOAT_ID, INT_ID, STRING_ID, UNDECIDED_ID, VOID_ID};
+
 use super::{identifier_map::IdentifierId, internal_repr::FunctionDefinition};
 
 //todo: eventually crate feature
@@ -130,6 +132,19 @@ impl Value {
         match self {
             Value::Float(x) => *x,
             _ => panic!("Not a Float"),
+        }
+    }
+
+    pub(super) fn id_type(&self) -> IdentifierId {
+        match self {
+            Value::Typed(id, _, _) => *id,
+            Value::Integer(_) => INT_ID,
+            Value::Float(_) => FLOAT_ID,
+            Value::Bool(_) => BOOL_ID,
+            Value::String(_) => STRING_ID,
+            Value::Function(function_definition, _) => function_definition.id,
+            Value::Void => VOID_ID,
+            Value::Undecided => UNDECIDED_ID,
         }
     }
 }

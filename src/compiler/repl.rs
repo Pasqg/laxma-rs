@@ -97,6 +97,7 @@ impl REPL {
         if result.is_ok() {
             let Program {
                 functions,
+                dispatches,
                 types,
                 identifier_id_map: _,
             } = result.unwrap();
@@ -170,6 +171,16 @@ impl REPL {
                 self.program.types.insert(type_id, definition);
             }
 
+            let mut dispatch_definitions = Vec::new();
+            for key in dispatches.keys() {
+                let (id, definition) = (key, dispatches.get(key.as_ref()).unwrap());
+
+                println!("Defined dispatch {}", self.program.var_name(id),);
+
+                dispatch_definitions.push(Rc::clone(definition));
+                self.program.dispatches.insert(**id, Rc::clone(definition));
+            }
+
             let mut function_definitions = Vec::new();
             for key in functions.keys() {
                 let (id, definition) = (key, functions.get(key.as_ref()).unwrap());
@@ -200,7 +211,9 @@ impl REPL {
                 }
             } else {
                 for definition in &function_definitions {
-                    self.program.functions.insert(definition.id, Rc::clone(definition));
+                    self.program
+                        .functions
+                        .insert(definition.id, Rc::clone(definition));
                 }
             }
 
@@ -290,7 +303,7 @@ impl REPL {
                                 return Err(format!(
                                     "Redundant re-binding '{}' of argument {} in function '{}'",
                                     self.program.var_name(identifier),
-                                    i+1,
+                                    i + 1,
                                     self.program.var_name(function_id)
                                 ));
                             }
@@ -495,7 +508,75 @@ impl REPL {
                     }
                 }
             } else {
-                definition = self.program.functions.get(&function_call.id);
+                let f_definition = self.program.functions.get(&function_call.id);
+                if f_definition.is_none() {
+                    //todo: make it nicer and don't duplicate effort
+                    let dispatch = self.program.dispatches.get(&function_call.id);
+                    if dispatch.is_some() {
+                        let mut arg_values = Vec::new();
+                        for param in &function_call.arguments {
+                            arg_values.push(self.evaluate_expression(
+                                caller_id,
+                                &identifier_values,
+                                &param,
+                            )?);
+                        }
+
+                        let dispatch = dispatch.unwrap();
+
+                        for (pattern, expression) in &dispatch.bodies {
+                            let mut matching_args = 0;
+                            for i in 0..pattern.components.len() {
+                                let pattern = &pattern.components[i];
+                                match pattern {
+                                    DestructuringComponent::Identifier(id) => {
+                                        if *id != arg_values[i].id_type() {
+                                            continue;
+                                        }
+                                        matching_args += 1;
+                                    }
+                                    _ => {
+                                        return Err(format!(
+                                            "Expected only type names in dispatch {} on evaluation",
+                                            self.program.var_name(&function_call.id),
+                                        ));
+                                    }
+                                }
+                            }
+
+                            if matching_args == dispatch.arguments.len() {
+                                let mut ids = identifier_values.as_ref().clone();
+                                for i in 0..dispatch.arguments.len() {
+                                    ids.insert(dispatch.arguments[i], Rc::clone(&arg_values[i]));
+                                }
+
+                                return self.evaluate_expression(
+                                    caller_id,
+                                    &Rc::new(ids),
+                                    expression,
+                                );
+                            }
+                        }
+
+                        return Err(format!(
+                            "Dispatch {} is not defined for arguments '{}' at evaluation",
+                            self.program.var_name(&function_call.id),
+                            arg_values
+                                .iter()
+                                .map(|val| self
+                                    .program
+                                    .identifier_id_map
+                                    .get_identifier(&val.id_type())
+                                    .unwrap()
+                                    .as_ref()
+                                    .to_owned())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        ));
+                    }
+                } 
+                
+                definition = f_definition;
             }
 
             if definition.is_none() {
@@ -664,7 +745,9 @@ impl REPL {
                 for param in ordered_arg_values {
                     match param.value_to_str(&|id| Rc::clone(self.program.var_name(id))) {
                         Ok(val) => values.push(val),
-                        Err(err) => return Some(Err(format!("Cannot print argument {}: {err}", i+1))),
+                        Err(err) => {
+                            return Some(Err(format!("Cannot print argument {}: {err}", i + 1)))
+                        }
                     }
                     i += 1;
                 }
