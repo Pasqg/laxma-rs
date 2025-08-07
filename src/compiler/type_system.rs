@@ -933,10 +933,11 @@ pub fn infer_function_definition_type(
                         let result = program.types.get(&arg.typing.id());
                         if result.is_none() {
                             return Err(format!(
-                                "Cannot find type '{}' for argument '{}' of function '{}'",
+                                "Cannot find type '{}' for argument '{}' of function '{}' when destructuring '{}'",
                                 program.var_name(&arg.typing.id()),
                                 program.var_name(&arg.identifier),
-                                program.var_name(&function_id)
+                                program.var_name(&function_id),
+                                program.var_name(&destructuring.0),
                             ));
                         }
                         let type_def = Rc::clone(&result.unwrap().def);
