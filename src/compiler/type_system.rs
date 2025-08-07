@@ -908,6 +908,15 @@ pub fn infer_function_definition_type(
         for (destructuring, expression) in &current_function.bodies {
             let mut identifier_types = arg_types.as_ref().clone();
 
+            if destructuring.components.len() != current_function.arguments.len() {
+                return Err(format!(
+                    "Expected {} destructuring components but got {} in function '{}'",
+                    current_function.arguments.len(),
+                    destructuring.components.len(),
+                    program.var_name(&function_id),
+                ));
+            }
+
             let mut i = 0;
             for component in &destructuring.components {
                 let arg = &current_function.arguments[i];
