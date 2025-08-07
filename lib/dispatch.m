@@ -13,3 +13,7 @@ dispatch * x y =
 dispatch / x y =
     Float, Float -> fdiv(x y)
     Int, Int -> idiv(x y)
+
+dispatch map x f =
+    Option, _ -> option_map(x f)
+    List, _ -> list_map(x f)

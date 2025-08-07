@@ -1,4 +1,4 @@
-type List['T] -> Empty | List 'T List ['T]
+type List['T] -> Empty | List 'T List['T]
 
 fn empty -> List::Empty()
 
@@ -68,11 +68,11 @@ fn while_range n:Int =
             (xs: List[Int]) -> <(first(xs), k)
         )
 
-fn map f:('P)->'Q xs:List['P] =
-    _, Empty -> empty()
-    _, List x xs -> cons(f(x) map(f xs))
+fn list_map xs:List['P] f:('P)->'Q =
+    Empty, _ -> empty()
+    List x xs, _ -> cons(f(x) list_map(xs f))
 
-fn reverse xs:List['T] -> foldl(flip(cons) empty() xs)
+fn reverse xs:List['A] -> foldl(flip(cons) empty() xs)
 
 fn reduce
         f:('Result 'T) -> 'Result
