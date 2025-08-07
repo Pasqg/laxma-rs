@@ -314,15 +314,15 @@ Some examples are available in the [examples](./examples/) folder.
 
 | Command | Description |
 | --- | --- |
-| /load | Loads one or multiple files or directories into the environment |
+| import | Imports one or multiple files or directories into the environment |
 | /quit, /exit | Closes the REPL |
 
-### Loading builtins
+### Importing builtins
 
-Most primitives are available without loading any file, but it is recommended to load:
+Most primitives are available without importing any file, but it is recommended to import:
 
 ```
-/load lib/core
+import lib/core
 ```
 
-These will eventually be loaded automatically at REPL start-up.
+These will eventually be imported automatically at REPL start-up.

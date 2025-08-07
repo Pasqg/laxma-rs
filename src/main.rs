@@ -11,11 +11,11 @@ mod parser;
 mod recur;
 mod utils;
 
-const LOAD_COMMAND: &'static str = "/load";
+const IMPORT_COMMAND: &'static str = "import";
 
 fn execute_input(repl: &mut REPL, input: &str) {
     let mut tokens = Lexer::token_stream(input);
-    while tokens.not_done() && &tokens.peek().unwrap_str() == LOAD_COMMAND {
+    while tokens.not_done() && &tokens.peek().unwrap_str() == IMPORT_COMMAND {
         let (_, remaining) = tokens.advance();
         if remaining.not_done() {
             let (file_name, remaining) = remaining.advance();

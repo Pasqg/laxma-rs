@@ -1,4 +1,4 @@
-/load lib/builtins
-/load lib/math
-/load lib/list
-/load lib/sort
+import lib/builtins
+import lib/list
+import lib/math
+import lib/sort

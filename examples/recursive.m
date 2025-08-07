@@ -1,4 +1,4 @@
-/load lib/core
+import lib/core
 
 fn factorial x : Int =
     0 -> 1

@@ -1,5 +1,5 @@
 #!../target/debug/laxma-rs
 
-/load ../lib/builtins
+import ../lib/builtins
 
 fn main -> print("Hello, world!")

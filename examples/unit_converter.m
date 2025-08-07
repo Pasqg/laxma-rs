@@ -1,7 +1,7 @@
 #!../target/debug/laxma-rs
 
-/load ../lib/builtins
-/load ../lib/math
+import ../lib/builtins
+import ../lib/math
 
 type Unit -> Celsius | Fahrenheit | Kelvin
 
