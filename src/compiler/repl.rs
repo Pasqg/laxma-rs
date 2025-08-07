@@ -5,9 +5,9 @@ use std::vec;
 
 use nohash_hasher::IntMap;
 
-use crate::compiler::grammar;
 use crate::compiler::identifier_map::{UNDECIDED_ID, VOID_ID};
 use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
+use crate::compiler::grammar;
 use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
@@ -171,14 +171,16 @@ impl REPL {
                 self.program.types.insert(type_id, definition);
             }
 
-            let mut dispatch_definitions = Vec::new();
             for key in dispatches.keys() {
                 let (id, definition) = (key, dispatches.get(key.as_ref()).unwrap());
 
-                println!("Defined dispatch {}", self.program.var_name(id),);
-
-                dispatch_definitions.push(Rc::clone(definition));
-                self.program.dispatches.insert(**id, Rc::clone(definition));
+                let dispatch = self.program.dispatches.get(&id);
+                if dispatch.is_none() {
+                    println!("Defined dispatch {}", self.program.var_name(id));
+                    self.program.dispatches.insert(**id, Rc::clone(definition));
+                } else {
+                    return Err(format!("Dispatch '{}' is already defined", self.program.var_name(id)));
+                }
             }
 
             let mut function_definitions = Vec::new();
@@ -530,7 +532,7 @@ impl REPL {
                                 let pattern = &pattern.components[i];
                                 match pattern {
                                     DestructuringComponent::Identifier(id) => {
-                                        if *id != arg_values[i].id_type() {
+                                        if *id != WILDCARD_ID && *id != arg_values[i].id_type() {
                                             continue;
                                         }
                                         matching_args += 1;
@@ -559,7 +561,7 @@ impl REPL {
                         }
 
                         return Err(format!(
-                            "Dispatch {} is not defined for arguments '{}' at evaluation",
+                            "Dispatch '{}' is not defined for arguments '{}' at evaluation",
                             self.program.var_name(&function_call.id),
                             arg_values
                                 .iter()
@@ -574,8 +576,7 @@ impl REPL {
                                 .join(", ")
                         ));
                     }
-                } 
-                
+                }
                 definition = f_definition;
             }
 

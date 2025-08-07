@@ -558,7 +558,7 @@ pub fn infer_expression_type(
                     for i in 0..pattern.components.len() {
                         match &pattern.components[i] {
                             DestructuringComponent::Identifier(type_id) => {
-                                if arg_types[i].id() != *type_id {
+                                if *type_id != WILDCARD_ID && arg_types[i].id() != *type_id {
                                     continue;
                                 }
                                 matching_args += 1
@@ -590,7 +590,7 @@ pub fn infer_expression_type(
                 }
 
                 return Err(format!(
-                    "Dispatch {} is not defined for arguments '{}'",
+                    "Dispatch '{}' is not defined for arguments '{}'",
                     program.var_name(&function_call.id),
                     arg_types
                         .iter()
