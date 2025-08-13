@@ -3,12 +3,14 @@ use std::{collections::HashSet, rc::Rc};
 
 use nohash_hasher::IntMap;
 
-use crate::{parser::ast::AST, utils::InsertionOrderHashMap};
+use crate::{compiler::optimiser::optimise_function, parser::ast::AST, utils::InsertionOrderHashMap};
 
 use super::{
     grammar::Rules,
     identifier_map::{IdentifierId, IdentifierIdMap, UNDECIDED_ID},
 };
+
+const RUN_OPTIMISER: bool = true;
 
 pub(super) type RcType = Rc<Type>;
 
@@ -792,10 +794,20 @@ pub fn to_repr(
         }
     }
 
-    Ok(Program {
+    let mut program = Program {
         functions,
         dispatches,
         types,
         identifier_id_map: identifier_id_map.clone(),
-    })
+    };
+
+    if RUN_OPTIMISER {
+        let vals: Vec<_> = program.functions.values().cloned().collect();
+        for definition in vals {
+            let optimised = optimise_function(&program, &definition);
+            program.functions.insert(definition.id, optimised);
+        }
+    }
+
+    Ok(program)
 }

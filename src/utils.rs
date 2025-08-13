@@ -55,4 +55,8 @@ where
     pub fn keys(&self) -> &Vec<Rc<K>> {
         &self.keys
     }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.map.values()
+    }
 }

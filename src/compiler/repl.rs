@@ -201,22 +201,9 @@ impl REPL {
 
                 function_definitions.push(Rc::clone(definition));
                 self.type_info.function_types.insert(**id, function_type);
-            }
-
-            if RUN_OPTIMISER {
-                for definition in &function_definitions {
-                    let optimised = optimise_function(&self.program, definition);
-                    println!("{:?}", optimised);
-                    self.program
-                        .functions
-                        .insert(optimised.id, optimised);
-                }
-            } else {
-                for definition in &function_definitions {
-                    self.program
-                        .functions
-                        .insert(definition.id, Rc::clone(definition));
-                }
+                self.program
+                    .functions
+                    .insert(definition.id, Rc::clone(definition));
             }
 
             return Ok(String::new());
