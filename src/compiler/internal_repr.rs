@@ -277,6 +277,159 @@ impl Program {
     pub(super) fn var_name(&self, id: &IdentifierId) -> &Rc<String> {
         self.identifier_id_map.get_identifier(id).unwrap()
     }
+
+    pub(super) fn decompile_function(&self, function_id: &IdentifierId) -> String {
+        let definition = self.functions.get(function_id);
+        if definition.is_none() {
+            return format!("No such function '{}'", self.var_name(function_id));
+        }
+        let definition = definition.unwrap();
+
+        let function_name = format!("fn {}", self.var_name(function_id));
+        let function_arguments = if definition.arguments.is_empty() {
+            "".to_string()
+        } else {
+            definition
+                .arguments
+                .iter()
+                .map(|arg| {
+                    format!(
+                        "{}:{}",
+                        self.var_name(&arg.identifier),
+                        arg.typing.full_repr(&self.identifier_id_map)
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join(" ")
+        };
+
+        let bodies = if definition.bodies.len() > 1 {
+            format!(
+                "=\n    {}",
+                definition
+                    .bodies
+                    .iter()
+                    .map(|(pattern, expression)| {
+                        format!(
+                            "{} -> {}",
+                            pattern
+                                .components
+                                .iter()
+                                .map(|destructuring| match destructuring {
+                                    DestructuringComponent::Identifier(id) => {
+                                        format!("{}", self.var_name(id))
+                                    }
+                                    DestructuringComponent::Destructuring(destructuring) => {
+                                        format!(
+                                            "{} {}",
+                                            self.var_name(&destructuring.0),
+                                            destructuring
+                                                .1
+                                                .iter()
+                                                .map(|d| {
+                                                    match d {
+                                                        DestructuringComponent::Identifier(id) => {
+                                                            format!("{}", self.var_name(id))
+                                                        }
+                                                        DestructuringComponent::Integer(i) => {
+                                                            format!("{i}")
+                                                        }
+                                                        DestructuringComponent::Float(f) => {
+                                                            format!("{f}")
+                                                        }
+                                                        DestructuringComponent::String(s) => {
+                                                            format!("\"{s}\"")
+                                                        }
+                                                        DestructuringComponent::Destructuring(
+                                                            destructuring,
+                                                        ) => {
+                                                            format!("UNSUPPORTED")
+                                                        }
+                                                    }
+                                                })
+                                                .collect::<Vec<String>>()
+                                                .join(" ")
+                                        )
+                                    }
+                                    DestructuringComponent::Integer(i) => format!("{i}"),
+                                    DestructuringComponent::Float(f) => format!("{f}"),
+                                    DestructuringComponent::String(s) => format!("\"{s}\""),
+                                })
+                                .collect::<Vec<String>>()
+                                .join(", "),
+                            self.decompile_expression(expression)
+                        )
+                    })
+                    .collect::<Vec<String>>()
+                    .join("\n    ")
+            )
+        } else {
+            format!(
+                " ->\n    {}",
+                self.decompile_expression(&definition.bodies[0].1)
+            )
+        };
+
+        return format!("{function_name} {function_arguments}{bodies}\n\n");
+    }
+
+    pub(super) fn decompile_expression(&self, expression: &Rc<Expression>) -> String {
+        match expression.as_ref() {
+            Expression::TypeConstructor(id, variant, expressions) => format!(
+                "{}::{}({})",
+                self.var_name(id),
+                self.var_name(variant),
+                expressions
+                    .iter()
+                    .map(|expr| self.decompile_expression(expr))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
+            Expression::FunctionCall(function_call) => format!(
+                "{}({})",
+                self.var_name(&function_call.id),
+                function_call
+                    .arguments
+                    .iter()
+                    .map(|expr| self.decompile_expression(expr))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
+            Expression::Identifier(id) => self.var_name(id).to_string(),
+            Expression::Integer(i) => format!("{i}"),
+            Expression::Float(f) => format!("{f}"),
+            Expression::String(s) => format!("\"{s}\""),
+            Expression::WithBlock(items, expression) => {
+                format!(
+                    "with {} {}",
+                    items
+                        .iter()
+                        .map(|(id, expr)| format!(
+                            "{} = {}",
+                            self.var_name(id),
+                            self.decompile_expression(expr)
+                        ))
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                    self.decompile_expression(expression)
+                )
+            }
+            Expression::Cast(expression, typing) => format!(
+                "cast {} as {}",
+                self.decompile_expression(expression),
+                typing.full_repr(&self.identifier_id_map)
+            ),
+            Expression::If(condition, expression1, expression2) => {
+                format!(
+                    "if {}\n    {}\n    {}",
+                    self.decompile_expression(condition),
+                    self.decompile_expression(expression1),
+                    self.decompile_expression(expression2)
+                )
+            }
+            Expression::LambdaExpression(function_definition) => format!("LAMBDA"),
+        }
+    }
 }
 
 fn type_repr(ast: &AST<Rules>, identifier_id_map: &mut IdentifierIdMap) -> Result<Type, String> {
