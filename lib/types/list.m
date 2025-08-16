@@ -15,15 +15,17 @@ fn rest x:List['T] =
 
 fn second x:List['T] -> first(rest(x))
 
-fn length x:List['T] = 
+fn list_length x:List['T] = 
     Empty -> 0
-    List _ xs -> ++(length(xs))
+    List _ xs -> ++(list_length(xs))
 
-fn empty? x:List['T] =
+fn list_empty? x:List['T] =
     Empty -> true
     List _ _ -> false
 
-fn concat xs:List['T] ys:List['T] =
+fn cons x:'C xs:List['C] -> List::List(x xs)
+
+fn concat xs:List['S] ys:List['S] =
     _, Empty -> xs
     Empty , _ -> ys
     List x xs , _ -> cons(x concat(xs ys))
@@ -32,6 +34,7 @@ fn range n:Int -> singleton(0)
 
 fn while acc:'Acc update:('Acc)->'Acc condition:('Acc)->Bool -> acc
 
+# native
 fn foldl f:('Acc 'T)->'Acc z:'Acc xs:List['T] -> z
 
 fn foldr f:('T 'Acc)->'Acc z:'Acc xs:List['T] =
@@ -70,7 +73,7 @@ fn while_range n:Int =
 
 fn list_map xs:List['P] f:('P)->'Q =
     Empty, _ -> empty()
-    List x xs, _ -> cons(f(x) list_map(xs f))
+    List x rest, _ -> cons(f(x) list_map(rest f))
 
 fn reverse xs:List['A] -> foldl(flip(cons) empty() xs)
 
@@ -81,3 +84,16 @@ fn reduce
     =
     _, _, Empty -> init
     _, _, List x xs -> f(reduce(f init xs) x)
+
+
+fn list_of n:Int x:'S ->
+    while(
+        pair(empty() 0)
+        (p:Pair[List['S] Int])->
+            pair(
+                cons(x pair_first(p))
+                ++(pair_second(p))
+            )
+        (p:Pair[List['S], Int]) -> <(pair_second(p) n)
+    )
+
