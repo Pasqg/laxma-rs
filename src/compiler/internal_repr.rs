@@ -3,7 +3,14 @@ use std::{collections::HashSet, rc::Rc};
 
 use nohash_hasher::IntMap;
 
-use crate::{compiler::optimiser::optimise_function, parser::ast::AST, utils::InsertionOrderHashMap};
+use crate::{
+    compiler::{
+        identifier_map::{FALSE_ID, TRUE_ID, WILDCARD_ID},
+        optimiser::optimise_function,
+    },
+    parser::ast::AST,
+    utils::InsertionOrderHashMap,
+};
 
 use super::{
     grammar::Rules,
@@ -209,6 +216,13 @@ impl Expression {
         match self {
             Self::Integer(x) => *x,
             _ => panic!("Expression not a Int"),
+        }
+    }
+
+    pub(super) fn as_bool(&self) -> bool {
+        match self {
+            Self::Identifier(id) if *id == TRUE_ID || *id == FALSE_ID => *id == TRUE_ID,
+            _ => panic!("Expression not a bool"),
         }
     }
 }

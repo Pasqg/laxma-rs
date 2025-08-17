@@ -39,6 +39,10 @@ pub(super) const FADD_ID: IdentifierId = 30;
 pub(super) const FMUL_ID: IdentifierId = 31;
 pub(super) const FSUB_ID: IdentifierId = 32;
 pub(super) const FDIV_ID: IdentifierId = 33;
+pub(super) const AND_ID: IdentifierId = 34;
+pub(super) const OR_ID: IdentifierId = 35;
+pub(super) const NOT_ID: IdentifierId = 36;
+pub(super) const XOR_ID: IdentifierId = 37;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -74,6 +78,12 @@ impl IdentifierIdMap {
             (Rc::new("fmul".to_string()), FMUL_ID),
             (Rc::new("fsub".to_string()), FSUB_ID),
             (Rc::new("fdiv".to_string()), FDIV_ID),
+
+            // Boolean builtins
+            (Rc::new("and".to_string()), AND_ID),
+            (Rc::new("or".to_string()), OR_ID),
+            (Rc::new("not".to_string()), NOT_ID),
+            (Rc::new("xor".to_string()), XOR_ID),
 
             (Rc::new("Int".to_string()), INT_ID),
             (Rc::new("Float".to_string()), FLOAT_ID),

@@ -2,6 +2,8 @@ use std::{collections::HashSet, rc::Rc};
 
 use nohash_hasher::IntMap;
 
+use crate::compiler::identifier_map::{AND_ID, FALSE_ID, NOT_ID, OR_ID, TRUE_ID, XOR_ID};
+
 use super::{
     identifier_map::{
         IdentifierId, IdentifierIdMap, EXP_ID, FADD_ID, FDIV_ID, FMUL_ID, FSUB_ID, IADD_ID,
@@ -23,7 +25,12 @@ pub fn optimise_function(
             .map(|(pattern, expr)| {
                 (
                     pattern.clone(),
-                    optimise_expression(program, &HashSet::from([definition.id]), &IntMap::default(), expr),
+                    optimise_expression(
+                        program,
+                        &HashSet::from([definition.id]),
+                        &IntMap::default(),
+                        expr,
+                    ),
                 )
             })
             .collect(),
@@ -121,6 +128,7 @@ fn expression_inline_optimiser(
             }
             let function_definition = function_definition.unwrap();
 
+            // Skip pattern matched functions from inlining into caller functions
             if function_definition.bodies.len() != 1
                 || !function_definition.bodies[0].0.components.is_empty()
             {
@@ -155,7 +163,7 @@ fn expression_inline_optimiser(
                         ),
                     );
                 }
-                
+
                 caller_ids.insert(function_call.id);
                 let optimised = expression_inline_optimiser(
                     program,
@@ -237,6 +245,10 @@ fn expression_const_expr_optimiser(expr: &Rc<Expression>) -> Rc<Expression> {
                 FMUL_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0] * args[1]),
                 FSUB_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0] - args[1]),
                 FDIV_ID => float_expr(expr, &[&args[0], &args[1]], |args| args[0] / args[1]),
+                AND_ID => boolean_expr(expr, &[&args[0], &args[1]], |args| args[0] && args[1]),
+                OR_ID => boolean_expr(expr, &[&args[0], &args[1]], |args| args[0] || args[1]),
+                NOT_ID => boolean_expr(expr, &[&args[0]], |args| !args[0]),
+                XOR_ID => boolean_expr(expr, &[&args[0], &args[1]], |args| args[0] ^ args[1]),
                 _ => Rc::clone(expr),
             };
             return result;
@@ -281,6 +293,33 @@ where
     Rc::new(Expression::Integer(f(&args)))
 }
 
+fn boolean_expr<F>(
+    default: &Rc<Expression>,
+    expressions: &[&Rc<Expression>],
+    f: F,
+) -> Rc<Expression>
+where
+    F: FnOnce(&[bool]) -> bool,
+{
+    for expr in expressions {
+        match expr.as_ref() {
+            Expression::Identifier(id) if *id == TRUE_ID || *id == FALSE_ID => {}
+            _ => return Rc::clone(default),
+        }
+    }
+
+    let args = expressions
+        .iter()
+        .map(|expr| expr.as_bool())
+        .collect::<Vec<bool>>();
+    let return_value = f(&args);
+    Rc::new(Expression::Identifier(if return_value {
+        TRUE_ID
+    } else {
+        FALSE_ID
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, rc::Rc};
@@ -298,7 +337,7 @@ mod tests {
             lexer::Lexer,
             optimiser::{
                 expression_const_expr_optimiser, expression_inline_optimiser, optimise_expression,
-            }, repl::REPL,
+            },
         },
         parser::combinators::ParserCombinator,
         utils::InsertionOrderHashMap,

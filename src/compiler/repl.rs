@@ -8,6 +8,8 @@ use nohash_hasher::IntMap;
 use crate::compiler::identifier_map::{UNDECIDED_ID, VOID_ID};
 use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
 use crate::compiler::grammar;
+use crate::compiler::identifier_map::{AND_ID, NOT_ID, OR_ID, UNDECIDED_ID, VOID_ID, XOR_ID};
+use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
 use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
@@ -727,6 +729,18 @@ impl REPL {
             FDIV_ID => {
                 wrap_float(ordered_arg_values[0].as_float() / ordered_arg_values[1].as_float())
             }
+            AND_ID => {
+                wrap_bool(ordered_arg_values[0].as_boolean() && ordered_arg_values[1].as_boolean())
+            }
+            OR_ID => {
+                wrap_bool(ordered_arg_values[0].as_boolean() || ordered_arg_values[1].as_boolean())
+            }
+            NOT_ID => {
+                wrap_bool(!ordered_arg_values[0].as_boolean())
+            }
+            XOR_ID => {
+                wrap_bool(ordered_arg_values[0].as_boolean() ^ ordered_arg_values[1].as_boolean())
+            }
             PRINT_ID | ERROR_ID | PRINTLN_ID => {
                 let mut values = Vec::new();
                 let mut i = 1;
@@ -903,6 +917,10 @@ fn wrap_float(f: f32) -> Option<Result<Rc<Value>, String>> {
 
 fn wrap_int(i: i64) -> Option<Result<Rc<Value>, String>> {
     Some(Ok(Rc::new(Value::Integer(i))))
+}
+
+fn wrap_bool(b: bool) -> Option<Result<Rc<Value>, String>> {
+    Some(Ok(Rc::new(Value::Bool(b))))
 }
 
 #[cfg(test)]
