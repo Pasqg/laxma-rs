@@ -1,3 +1,6 @@
+dispatch == x y =
+    Bool, Bool -> not(xor(x y))
+
 dispatch + x y =
     Float, Float -> fadd(x y)
     Int, Int -> iadd(x y)

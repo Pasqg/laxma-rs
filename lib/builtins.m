@@ -4,6 +4,7 @@ import lib/builtins/bool_builtins
 
 fn print x:'PrintT -> Void
 fn println x:'PrintT -> Void
+fn error message:'T -> Void
 
 fn id x:'T -> x
 fn . f:('Q)->'R g:('P)->'Q -> (x:'P)->f(g(x))

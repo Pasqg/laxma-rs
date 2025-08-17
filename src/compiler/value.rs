@@ -99,7 +99,7 @@ impl Value {
                 }
             }
             Value::Bool(x) => Ok(format!("{x}")),
-            Value::String(x) => Ok(format!("\"{}\"", &x.to_string()[1..x.len() - 1])),
+            Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len() - 1])),
             Value::Void => Ok("Void".to_string()),
             Value::Undecided => Ok("Undecided".to_string()),
         }
