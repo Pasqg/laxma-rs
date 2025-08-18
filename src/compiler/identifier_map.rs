@@ -9,11 +9,11 @@ pub(super) const IADD_ID: IdentifierId = 0;
 pub(super) const ISUB_ID: IdentifierId = 1;
 pub(super) const IMUL_ID: IdentifierId = 2;
 pub(super) const IDIV_ID: IdentifierId = 3;
-pub(super) const GT_ID: IdentifierId = 4;
-pub(super) const LT_ID: IdentifierId = 5;
-pub(super) const EQ_ID: IdentifierId = 6;
-pub(super) const GE_ID: IdentifierId = 7;
-pub(super) const LE_ID: IdentifierId = 8;
+pub(super) const IGT_ID: IdentifierId = 4;
+pub(super) const ILT_ID: IdentifierId = 5;
+pub(super) const IEQ_ID: IdentifierId = 6;
+pub(super) const IGE_ID: IdentifierId = 7;
+pub(super) const ILE_ID: IdentifierId = 8;
 pub(super) const PRINT_ID: IdentifierId = 9;
 pub(super) const INT_ID: IdentifierId = 10;
 pub(super) const VOID_ID: IdentifierId = 11;
@@ -43,6 +43,16 @@ pub(super) const AND_ID: IdentifierId = 34;
 pub(super) const OR_ID: IdentifierId = 35;
 pub(super) const NOT_ID: IdentifierId = 36;
 pub(super) const XOR_ID: IdentifierId = 37;
+pub(super) const FGT_ID: IdentifierId = 38;
+pub(super) const FLT_ID: IdentifierId = 39;
+pub(super) const FEQ_ID: IdentifierId = 40;
+pub(super) const FGE_ID: IdentifierId = 41;
+pub(super) const FLE_ID: IdentifierId = 42;
+pub(super) const GT_ID: IdentifierId = 43;
+pub(super) const LT_ID: IdentifierId = 44;
+pub(super) const EQ_ID: IdentifierId = 45;
+pub(super) const GE_ID: IdentifierId = 46;
+pub(super) const LE_ID: IdentifierId = 47;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -60,17 +70,13 @@ impl IdentifierIdMap {
             (Rc::new("isub".to_string()), ISUB_ID),
             (Rc::new("imul".to_string()), IMUL_ID),
             (Rc::new("idiv".to_string()), IDIV_ID),
-            (Rc::new(">".to_string()), GT_ID),
-            (Rc::new("<".to_string()), LT_ID),
-            (Rc::new("==".to_string()), EQ_ID),
-            (Rc::new(">=".to_string()), GE_ID),
-            (Rc::new("<=".to_string()), LE_ID),
-            (Rc::new("print".to_string()), PRINT_ID),
-            (Rc::new("println".to_string()), PRINTLN_ID),
-            (Rc::new("error".to_string()), ERROR_ID),
-            (Rc::new("while".to_string()), WHILE_ID),
-            (Rc::new("range".to_string()), RANGE_ID),
-            (Rc::new("foldl".to_string()), FOLDL_ID),
+            (Rc::new("igt".to_string()), IGT_ID),
+            (Rc::new("ilt".to_string()), ILT_ID),
+            (Rc::new("ieq".to_string()), IEQ_ID),
+            (Rc::new("ige".to_string()), IGE_ID),
+            (Rc::new("ile".to_string()), ILE_ID),
+
+            // Float builtings
             (Rc::new("exp".to_string()), EXP_ID),
             (Rc::new("log".to_string()), LOG_ID),
             (Rc::new("pow".to_string()), POW_ID),
@@ -78,6 +84,11 @@ impl IdentifierIdMap {
             (Rc::new("fmul".to_string()), FMUL_ID),
             (Rc::new("fsub".to_string()), FSUB_ID),
             (Rc::new("fdiv".to_string()), FDIV_ID),
+            (Rc::new("fgt".to_string()), FGT_ID),
+            (Rc::new("flt".to_string()), FLT_ID),
+            (Rc::new("feq".to_string()), FEQ_ID),
+            (Rc::new("fge".to_string()), FGE_ID),
+            (Rc::new("fle".to_string()), FLE_ID),
 
             // Boolean builtins
             (Rc::new("and".to_string()), AND_ID),
@@ -85,6 +96,20 @@ impl IdentifierIdMap {
             (Rc::new("not".to_string()), NOT_ID),
             (Rc::new("xor".to_string()), XOR_ID),
 
+            // Other builtins
+            (Rc::new("print".to_string()), PRINT_ID),
+            (Rc::new("println".to_string()), PRINTLN_ID),
+            (Rc::new("error".to_string()), ERROR_ID),
+            (Rc::new("while".to_string()), WHILE_ID),
+            (Rc::new("range".to_string()), RANGE_ID),
+            (Rc::new("foldl".to_string()), FOLDL_ID),
+            (Rc::new(">".to_string()), GT_ID),
+            (Rc::new("<".to_string()), LT_ID),
+            (Rc::new("==".to_string()), EQ_ID),
+            (Rc::new(">=".to_string()), GE_ID),
+            (Rc::new("<=".to_string()), LE_ID),
+
+            // Primitive types
             (Rc::new("Int".to_string()), INT_ID),
             (Rc::new("Float".to_string()), FLOAT_ID),
             (Rc::new("String".to_string()), STRING_ID),

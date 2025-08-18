@@ -5,18 +5,16 @@ use std::vec;
 
 use nohash_hasher::IntMap;
 
-use crate::compiler::identifier_map::{UNDECIDED_ID, VOID_ID};
-use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
 use crate::compiler::grammar;
-use crate::compiler::identifier_map::{AND_ID, NOT_ID, OR_ID, UNDECIDED_ID, VOID_ID, XOR_ID};
+use crate::compiler::identifier_map::{AND_ID, FEQ_ID, FGE_ID, FGT_ID, FLE_ID, FLT_ID, NOT_ID, OR_ID, UNDECIDED_ID, VOID_ID, XOR_ID};
 use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
 use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
 
 use super::identifier_map::{
-    IdentifierId, EMPTY_LIST_ID, EQ_ID, ERROR_ID, EXP_ID, FADD_ID, FALSE_ID, FDIV_ID, FMUL_ID,
-    FOLDL_ID, FSUB_ID, GE_ID, GT_ID, IADD_ID, IDIV_ID, IMUL_ID, ISUB_ID, LE_ID, LIST_ID, LOG_ID,
-    LT_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, TRUE_ID, WHILE_ID, WILDCARD_ID,
+    IdentifierId, EMPTY_LIST_ID, IEQ_ID, ERROR_ID, EXP_ID, FADD_ID, FALSE_ID, FDIV_ID, FMUL_ID,
+    FOLDL_ID, FSUB_ID, IGE_ID, IGT_ID, IADD_ID, IDIV_ID, IMUL_ID, ISUB_ID, ILE_ID, LIST_ID, LOG_ID,
+    ILT_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, TRUE_ID, WHILE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
     expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
@@ -605,15 +603,20 @@ impl REPL {
         id: &IdentifierId,
         ordered_arg_values: &[RcValue],
     ) -> Result<RcValue, String> {
-        let left = ordered_arg_values[0].as_int();
-        let right = ordered_arg_values[1].as_int();
+        let left = &ordered_arg_values[0];
+        let right = &ordered_arg_values[1];
 
         match *id {
-            GT_ID => Ok(Rc::new(Value::Bool(left > right))),
-            GE_ID => Ok(Rc::new(Value::Bool(left >= right))),
-            LT_ID => Ok(Rc::new(Value::Bool(left < right))),
-            LE_ID => Ok(Rc::new(Value::Bool(left <= right))),
-            EQ_ID => Ok(Rc::new(Value::Bool(left == right))),
+            IGT_ID => Ok(Rc::new(Value::Bool(left.as_int() > right.as_int()))),
+            IGE_ID => Ok(Rc::new(Value::Bool(left.as_int() >= right.as_int()))),
+            ILT_ID => Ok(Rc::new(Value::Bool(left.as_int() < right.as_int()))),
+            ILE_ID => Ok(Rc::new(Value::Bool(left.as_int() <= right.as_int()))),
+            IEQ_ID => Ok(Rc::new(Value::Bool(left.as_int() == right.as_int()))),
+            FGT_ID => Ok(Rc::new(Value::Bool(left.as_float() > right.as_float()))),
+            FGE_ID => Ok(Rc::new(Value::Bool(left.as_float() >= right.as_float()))),
+            FLT_ID => Ok(Rc::new(Value::Bool(left.as_float() < right.as_float()))),
+            FLE_ID => Ok(Rc::new(Value::Bool(left.as_float() <= right.as_float()))),
+            FEQ_ID => Ok(Rc::new(Value::Bool(left.as_float() == right.as_float()))),
             _ => Err(format!(
                 "Unhandled boolean function {}",
                 self.program.var_name(&id)
@@ -687,7 +690,7 @@ impl REPL {
         ordered_arg_values: &[RcValue],
     ) -> Option<Result<RcValue, String>> {
         match *id {
-            GT_ID | LT_ID | EQ_ID | LE_ID | GE_ID => {
+            IGT_ID | ILT_ID | IEQ_ID | ILE_ID | IGE_ID | FGT_ID | FLT_ID | FEQ_ID | FLE_ID | FGE_ID => {
                 Some(self.evaluate_boolean_operator(id, ordered_arg_values))
             }
             WHILE_ID => Some(self.evaluate_while(ordered_arg_values)),
