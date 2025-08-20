@@ -6,7 +6,7 @@ use std::vec;
 use nohash_hasher::IntMap;
 
 use crate::compiler::grammar;
-use crate::compiler::identifier_map::{AND_ID, FEQ_ID, FGE_ID, FGT_ID, FLE_ID, FLT_ID, NOT_ID, OR_ID, UNDECIDED_ID, VOID_ID, XOR_ID};
+use crate::compiler::identifier_map::{AND_ID, FEQ_ID, FGE_ID, FGT_ID, FLE_ID, FLT_ID, NOT_ID, OR_ID, STRING_CONCAT_ID, UNDECIDED_ID, VOID_ID, XOR_ID};
 use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
 use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
@@ -21,14 +21,11 @@ use super::internal_repr::{
     Program,
 };
 use super::lexer::Lexer;
-use super::optimiser::optimise_function;
 use super::type_system::{
     infer_expression_type, infer_function_definition_type, verify_type_definition, TypeInfo,
 };
 use super::utils::to_int_map;
 use super::value::{RcValue, Value};
-
-const RUN_OPTIMISER: bool = true;
 
 #[derive(Clone, Debug)]
 struct PatternMatchResult {
@@ -684,6 +681,13 @@ impl REPL {
         Ok(z)
     }
 
+    fn evaluate_string_concat(&self, ordered_arg_values: &[RcValue]) -> Result<RcValue, String> {
+        let s1 = ordered_arg_values[0].as_string();
+        let s2 = ordered_arg_values[1].as_string();
+
+        Ok(Rc::new(Value::String(Rc::new(format!("{}{}", s1, s2)))))
+    }
+
     fn try_evaluate_builtin(
         &self,
         id: &IdentifierId,
@@ -695,6 +699,7 @@ impl REPL {
             }
             WHILE_ID => Some(self.evaluate_while(ordered_arg_values)),
             FOLDL_ID => Some(self.evaluate_foldl(ordered_arg_values)),
+            STRING_CONCAT_ID => Some(self.evaluate_string_concat(ordered_arg_values)),
             RANGE_ID => {
                 let n = ordered_arg_values[0].as_int();
                 let mut result = Rc::new(Value::Typed(LIST_ID, EMPTY_LIST_ID, vec![]));

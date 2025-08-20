@@ -618,9 +618,10 @@ pub fn expression_repr(
         Some(Rules::Integer) => Ok(Rc::new(Expression::Integer(
             ast.matched[0].unwrap_str().parse().unwrap(),
         ))),
-        Some(Rules::String) => Ok(Rc::new(Expression::String(Rc::new(
-            ast.matched[0].unwrap_str(),
-        )))),
+        Some(Rules::String) => Ok(Rc::new(Expression::String(Rc::new({
+            let s = ast.matched[0].unwrap_str();
+            format!("{}", &s[1..s.len() - 1])
+        })))),
         Some(Rules::Float) => Ok(Rc::new(Expression::Float(
             ast.matched[0].unwrap_str().parse().unwrap(),
         ))),

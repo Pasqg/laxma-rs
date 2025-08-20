@@ -53,6 +53,7 @@ pub(super) const LT_ID: IdentifierId = 44;
 pub(super) const EQ_ID: IdentifierId = 45;
 pub(super) const GE_ID: IdentifierId = 46;
 pub(super) const LE_ID: IdentifierId = 47;
+pub(super) const STRING_CONCAT_ID: IdentifierId = 48;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -103,6 +104,7 @@ impl IdentifierIdMap {
             (Rc::new("while".to_string()), WHILE_ID),
             (Rc::new("range".to_string()), RANGE_ID),
             (Rc::new("foldl".to_string()), FOLDL_ID),
+            (Rc::new("string_concat".to_string()), STRING_CONCAT_ID),
             (Rc::new(">".to_string()), GT_ID),
             (Rc::new("<".to_string()), LT_ID),
             (Rc::new("==".to_string()), EQ_ID),

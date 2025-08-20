@@ -99,7 +99,7 @@ impl Value {
                 }
             }
             Value::Bool(x) => Ok(format!("{x}")),
-            Value::String(x) => Ok(format!("{}", &x.to_string()[1..x.len() - 1])),
+            Value::String(x) => Ok(x.to_string()),
             Value::Void => Ok("Void".to_string()),
             Value::Undecided => Ok("Undecided".to_string()),
         }
@@ -132,6 +132,13 @@ impl Value {
         match self {
             Value::Float(x) => *x,
             _ => panic!("Not a Float"),
+        }
+    }
+
+    pub(super) fn as_string(&self) -> String {
+        match self {
+            Value::String(s) => s.to_string(),
+            _ => panic!("Not a String"),
         }
     }
 
