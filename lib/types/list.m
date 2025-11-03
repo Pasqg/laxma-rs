@@ -84,16 +84,3 @@ fn reduce
     =
     _, _, Empty -> init
     _, _, List x xs -> f(reduce(f init xs) x)
-
-
-fn list_of n:Int x:'S ->
-    while(
-        pair(empty() 0)
-        (p:Pair[List['S] Int])->
-            pair(
-                cons(x pair_first(p))
-                ++(pair_second(p))
-            )
-        (p:Pair[List['S], Int]) -> <(pair_second(p) n)
-    )
-
