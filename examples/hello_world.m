@@ -1,4 +1,4 @@
-#!../target/debug/laxma-rs
+#!/usr/bin/env laxma
 
 import ../lib/builtins
 
