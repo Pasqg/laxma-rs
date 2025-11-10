@@ -251,7 +251,7 @@ impl Pattern {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub(super) struct FunctionDefinition {
+pub struct FunctionDefinition {
     pub(super) id: IdentifierId,
     pub(super) arguments: Vec<FunctionArgument>,
     pub(super) bodies: Vec<(Pattern, Rc<Expression>)>,

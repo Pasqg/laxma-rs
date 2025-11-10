@@ -19,3 +19,7 @@ dispatch map x f =
     Option, _ -> option_map(x f)
     List, _ -> list_map(x f)
     Result _ -> result_map(x f)
+
+dispatch length x =
+    String -> string_length(x)
+    List -> list_length(x)

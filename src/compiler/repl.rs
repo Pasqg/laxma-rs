@@ -6,7 +6,7 @@ use std::vec;
 use nohash_hasher::IntMap;
 
 use crate::compiler::grammar;
-use crate::compiler::identifier_map::{AND_ID, FEQ_ID, FGE_ID, FGT_ID, FLE_ID, FLT_ID, NOT_ID, OR_ID, STRING_CONCAT_ID, UNDECIDED_ID, VOID_ID, XOR_ID};
+use crate::compiler::identifier_map::{AND_ID, FEQ_ID, FGE_ID, FGT_ID, FLE_ID, FLT_ID, NOT_ID, OR_ID, STRING_CONCAT_ID, STRING_LENGTH_ID, UNDECIDED_ID, VOID_ID, XOR_ID};
 use crate::compiler::internal_repr::{to_repr, FunctionArgument, TypeVariant};
 use crate::parser::combinators::ParserCombinator;
 use crate::parser::token_stream::TokenStream;
@@ -700,6 +700,7 @@ impl REPL {
             WHILE_ID => Some(self.evaluate_while(ordered_arg_values)),
             FOLDL_ID => Some(self.evaluate_foldl(ordered_arg_values)),
             STRING_CONCAT_ID => Some(self.evaluate_string_concat(ordered_arg_values)),
+            STRING_LENGTH_ID => Some(Ok(Rc::new(Value::Integer(ordered_arg_values[0].as_string().len() as i64)))),
             RANGE_ID => {
                 let n = ordered_arg_values[0].as_int();
                 let mut result = Rc::new(Value::Typed(LIST_ID, EMPTY_LIST_ID, vec![]));

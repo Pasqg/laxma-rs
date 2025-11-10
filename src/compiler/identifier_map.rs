@@ -54,6 +54,7 @@ pub(super) const EQ_ID: IdentifierId = 45;
 pub(super) const GE_ID: IdentifierId = 46;
 pub(super) const LE_ID: IdentifierId = 47;
 pub(super) const STRING_CONCAT_ID: IdentifierId = 48;
+pub(super) const STRING_LENGTH_ID: IdentifierId = 49;
 
 #[derive(Debug, Clone)]
 pub(super) struct IdentifierIdMap {
@@ -105,6 +106,7 @@ impl IdentifierIdMap {
             (Rc::new("range".to_string()), RANGE_ID),
             (Rc::new("foldl".to_string()), FOLDL_ID),
             (Rc::new("string_concat".to_string()), STRING_CONCAT_ID),
+            (Rc::new("string_length".to_string()), STRING_LENGTH_ID),
             (Rc::new(">".to_string()), GT_ID),
             (Rc::new("<".to_string()), LT_ID),
             (Rc::new("==".to_string()), EQ_ID),

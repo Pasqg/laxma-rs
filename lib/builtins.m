@@ -27,6 +27,7 @@ fn print x:'PrintT -> Void
 fn println x:'PrintT -> Void
 fn error message:'T -> Void
 
+fn string_length str:String -> 0
 fn string_concat first:String second:String -> ""
 
 fn id x:'T -> x
