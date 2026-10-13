@@ -1,10 +1,10 @@
 #!../target/debug/laxma-rs
 
-import lib/core
-import lib/tests/asserts
-import lib/tests/test_bool_builtins
-import lib/tests/test_int_builtins
-import lib/tests/test_float_builtins
+import core
+import tests/asserts
+import tests/test_bool_builtins
+import tests/test_int_builtins
+import tests/test_float_builtins
 
 fn test ->
     with

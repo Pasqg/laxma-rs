@@ -1,7 +1,6 @@
 #!/usr/bin/env laxma
 
-import ../lib/builtins
-import ../lib/math
+import ../lib/core
 
 fn to_pct x:Float -> /(x 100.0)
 

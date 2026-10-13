@@ -1,4 +1,4 @@
-import lib/builtins
-import lib/types
-import lib/dispatch
-import lib/sort
+import builtins
+import types
+import dispatch
+import sort

@@ -1,6 +1,6 @@
-import lib/builtins/int_builtins
-import lib/builtins/float_builtins
-import lib/builtins/bool_builtins
+import builtins/int_builtins
+import builtins/float_builtins
+import builtins/bool_builtins
 
 dispatch == x y =
     Bool, Bool -> not(xor(x y))

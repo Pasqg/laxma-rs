@@ -1,3 +1,3 @@
-import lib/types/option
-import lib/types/result
-import lib/types/list
+import types/option
+import types/result
+import types/list

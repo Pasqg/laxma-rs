@@ -273,6 +273,10 @@ The above dispatch is effectively implementing an overloading of the function +,
 
 At the moment, there is no optimisation, and instead we evaluate the dispatches as special kinds of functions by dispatching on the type name, so type variables are erased.
 
+## Installing Laxma
+
+`install.sh` builds the release binary and installs it to `/usr/local/bin/laxma`, and installs the standard library (`lib/`) to `/usr/local/share/laxma`.
+
 ## Running Laxma
 
 Laxma can be built using cargo:
@@ -326,3 +330,9 @@ import lib/core
 ```
 
 These will eventually be imported automatically at REPL start-up.
+
+Imports are resolved in the following order:
+- the directory of the file calling the import
+- the current working directory
+- `$LAXMA_LIB`, if set (i.e. one containing `lib/`, or the laxma installation)
+- `/usr/local/share/laxma`
