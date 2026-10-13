@@ -15,6 +15,14 @@ dispatch / x y =
     Float, Float -> fdiv(x y)
     Int, Int -> idiv(x y)
 
+dispatch max x y =
+    Float, Float -> if fgt(x y) x y
+    Int, Int -> if igt(x y) x y
+
+dispatch min x y =
+    Float, Float -> if flt(x y) x y
+    Int, Int -> if ilt(x y) x y
+
 dispatch map x f =
     Option, _ -> option_map(x f)
     List, _ -> list_map(x f)
