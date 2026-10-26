@@ -23,8 +23,6 @@ fn list_empty? x:List['T] =
     Empty -> true
     List _ _ -> false
 
-fn cons x:'C xs:List['C] -> List::List(x xs)
-
 fn concat xs:List['S] ys:List['S] =
     _, Empty -> xs
     Empty , _ -> ys
