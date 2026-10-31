@@ -17,8 +17,8 @@ use super::identifier_map::{
     ILT_ID, POW_ID, PRINTLN_ID, PRINT_ID, RANGE_ID, REPL_ID, TRUE_ID, WHILE_ID, WILDCARD_ID,
 };
 use super::internal_repr::{
-    expression_repr, DestructuringComponent, Expression, FunctionCall, FunctionDefinition, Pattern,
-    Program,
+    optimised_expression_repr, DestructuringComponent, Expression, FunctionCall,
+    FunctionDefinition, Pattern, Program,
 };
 use super::lexer::Lexer;
 use super::type_system::{
@@ -67,6 +67,10 @@ impl REPL {
         self.handle_tokens(&tokens)
     }
 
+    pub fn print_ids(&self) {
+        &self.program.print_ids();
+    }
+
     pub fn handle_tokens(&mut self, tokens: &TokenStream) -> Result<String, String> {
         //todo: parse should return Result<ParserResult>
         let program_result = grammar::program_parser().parse(tokens);
@@ -76,7 +80,7 @@ impl REPL {
                 if expression_result.is_abort() {
                     return Err(expression_result.abort_message());
                 } else {
-                return Err(program_result.abort_message());
+                    return Err(program_result.abort_message());
                 }
             }
 
@@ -227,7 +231,7 @@ impl REPL {
         }
 
         let original_error = result.unwrap_err();
-        let result = expression_repr(&ast, &mut self.program.identifier_id_map);
+        let result = optimised_expression_repr(&mut self.program, &ast);
         if result.is_ok() {
             //todo dedup with type system
             let values = to_int_map(HashMap::from([

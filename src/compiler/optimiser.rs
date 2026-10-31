@@ -37,15 +37,79 @@ pub fn optimise_function(
     })
 }
 
-fn optimise_expression(
+pub fn optimise_expression(
     program: &Program,
     caller_ids: &HashSet<IdentifierId>,
     caller_bindings: &IntMap<IdentifierId, Rc<Expression>>,
     expr: &Rc<Expression>,
 ) -> Rc<Expression> {
+    let expr = desugar_infixes(program, expr);
     let expr = expression_inline_optimiser(program, caller_ids, caller_bindings, &expr);
     let expr = expression_const_expr_optimiser(&expr);
     expr
+}
+
+/*
+ * Replaces infix operator calls with the function they were declared to map to.
+ * Infix expressions are parsed as function calls keyed by the operator id.
+ * This pass is total (it visits every node), so it runs before inlining,
+ * which may skip subtrees and would leave operator ids unresolved.
+ */
+pub fn desugar_infixes(program: &Program, expr: &Rc<Expression>) -> Rc<Expression> {
+    match expr.as_ref() {
+        Expression::FunctionCall(function_call) => {
+            let id = match program.infixes.get(&function_call.id) {
+                Some(infix) => infix.function_name,
+                None => function_call.id,
+            };
+            let arguments = function_call
+                .arguments
+                .iter()
+                .map(|arg| desugar_infixes(program, arg))
+                .collect();
+            Rc::new(Expression::FunctionCall(FunctionCall { id, arguments }))
+        }
+        Expression::TypeConstructor(type_id, variant_id, expressions) => Rc::new(
+            Expression::TypeConstructor(
+                *type_id,
+                *variant_id,
+                expressions
+                    .iter()
+                    .map(|expr| desugar_infixes(program, expr))
+                    .collect(),
+            ),
+        ),
+        Expression::WithBlock(items, expression) => Rc::new(Expression::WithBlock(
+            items
+                .iter()
+                .map(|(binding_id, expr)| (*binding_id, desugar_infixes(program, expr)))
+                .collect(),
+            desugar_infixes(program, expression),
+        )),
+        Expression::Cast(expression, t) => Rc::new(Expression::Cast(
+            desugar_infixes(program, expression),
+            Rc::clone(t),
+        )),
+        Expression::If(condition, true_branch, false_branch) => Rc::new(Expression::If(
+            desugar_infixes(program, condition),
+            desugar_infixes(program, true_branch),
+            desugar_infixes(program, false_branch),
+        )),
+        Expression::LambdaExpression(function_definition) => Rc::new(Expression::LambdaExpression(
+            Rc::new(FunctionDefinition {
+                id: function_definition.id,
+                arguments: function_definition.arguments.clone(),
+                bodies: function_definition
+                    .bodies
+                    .iter()
+                    .map(|(pattern, expr)| (pattern.clone(), desugar_infixes(program, expr)))
+                    .collect(),
+            }),
+        )),
+        Expression::Identifier(_) | Expression::Integer(_) | Expression::Float(_) | Expression::String(_) => {
+            Rc::clone(expr)
+        }
+    }
 }
 
 fn substitute_bindings(
