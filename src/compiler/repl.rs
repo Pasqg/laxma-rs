@@ -73,7 +73,11 @@ impl REPL {
         let result = if !program_result.is_ok() || program_result.remaining.not_done() {
             let expression_result = grammar::expression_parser().parse(tokens);
             if !expression_result.is_ok() && program_result.is_abort() {
+                if expression_result.is_abort() {
+                    return Err(expression_result.abort_message());
+                } else {
                 return Err(program_result.abort_message());
+                }
             }
 
             if expression_result.is_abort() {
@@ -95,10 +99,12 @@ impl REPL {
             let Program {
                 functions,
                 dispatches,
+                infixes,
                 types,
                 identifier_id_map: _,
             } = result.unwrap();
 
+            // Registers type definitions
             for (type_id, definition) in types {
                 verify_type_definition(&mut self.program, &self.type_info, &definition)?;
 
@@ -168,12 +174,26 @@ impl REPL {
                 self.program.types.insert(type_id, definition);
             }
 
+            // Registers infixes
+            for key in infixes.keys() {
+                let (id, definition) = (key, infixes.get(key.as_ref()).unwrap());
+
+                let infix = self.program.infixes.get(&id);
+                if infix.is_none() {
+                    println!("Defined infix '{}'", self.program.var_name(id));
+                    self.program.infixes.insert(**id, Rc::clone(definition));
+                } else {
+                    return Err(format!("Infix '{}' is already defined", self.program.var_name(id)));
+                }
+            }
+
+            //Registers dispatches
             for key in dispatches.keys() {
                 let (id, definition) = (key, dispatches.get(key.as_ref()).unwrap());
 
                 let dispatch = self.program.dispatches.get(&id);
                 if dispatch.is_none() {
-                    println!("Defined dispatch {}", self.program.var_name(id));
+                    println!("Defined dispatch '{}'", self.program.var_name(id));
                     self.program.dispatches.insert(**id, Rc::clone(definition));
                 } else {
                     return Err(format!("Dispatch '{}' is already defined", self.program.var_name(id)));

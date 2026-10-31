@@ -2,6 +2,8 @@ dispatch + x y =
     Float, Float -> fadd(x y)
     Int, Int -> iadd(x y)
     String, String -> string_concat(x y)
+    # Can still fail at runtime when type don't match, instead it should be caught at compile time
+    _, List -> cons(x y)
 
 dispatch - x y =
     Float, Float -> fsub(x y)
@@ -14,6 +16,11 @@ dispatch * x y =
 dispatch / x y =
     Float, Float -> fdiv(x y)
     Int, Int -> idiv(x y)
+
+infix + -> +
+infix - -> -
+infix * -> *
+infix / -> /
 
 dispatch max x y =
     Float, Float -> if fgt(x y) x y

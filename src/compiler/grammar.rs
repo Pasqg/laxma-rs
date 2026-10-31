@@ -19,12 +19,14 @@ pub enum Rules {
     FunctionCall,
     Arguments,
     Expression,
+    InfixExpression,
     WithBlock,
     CastExpression,
     IfExpression,
     LambdaExpression,
 
     TypeDef,
+    InfixDeclaration,
     FunctionSignature,
     FunctionBody,
 
@@ -68,6 +70,7 @@ fn identifier() -> Combinators<Rules> {
             slit("dispatch"),
             slit("cast"),
             slit("as"),
+            slit("infix"),
         ]),
     )
 }
@@ -178,6 +181,28 @@ fn function_signature() -> Combinators<Rules> {
             aborting(
                 identifier(),
                 format!("Expected identifier after 'fn' at {{line}}:{{col}}"),
+            ),
+            many(Some(Rules::Arguments), argument(), None),
+        ],
+    )
+}
+
+fn infix_declaration() -> Combinators<Rules> {
+    and_match(
+        Rules::InfixDeclaration,
+        vec![
+            slit("infix"),
+            aborting(
+                identifier(),
+                format!("Expected identifier after 'infix' at {{line}}:{{col}}"),
+            ),
+            aborting(
+                slit("->"),
+                format!("Expected '->' after infix operator in infix definition at {{line}}:{{col}} but got {{token}}"),
+            ),
+            aborting(
+                identifier(),
+                format!("Expected function name after 'infix <op> ->' at {{line}}:{{col}} but got {{token}}"),
             ),
             many(Some(Rules::Arguments), argument(), None),
         ],
@@ -312,10 +337,7 @@ pub fn expression_parser() -> Combinators<Rules> {
                     argument(),
                     Some(optional(slit(","))),
                 ),
-                aborting(
-                    slit(")"),
-                    format!("Expected closing ')' in lambda expression at {{line}}:{{col}}"),
-                ),
+                slit(")"),
                 aborting(
                     slit("->"),
                     format!("Expected '->' in lambda expression at {{line}}:{{col}}"),
@@ -328,6 +350,28 @@ pub fn expression_parser() -> Combinators<Rules> {
         )
     };
 
+    let infix_expression = || {
+        and_match(
+            Rules::InfixExpression,
+            vec![
+                slit("("),
+                expression.clone(),
+                aborting(
+                    identifier(),
+                    format!("Expected identifier as second element of infix expression at {{line}}:{{col}} but got {{token}}"),
+                ),
+                aborting(
+                    expression.clone(),
+                    format!("Expected expression as third element of infix expression at {{line}}:{{col}} but got {{token}}"),
+                ),
+                aborting(
+                    slit(")"),
+                    format!("Expected closing ')' in infix expression at {{line}}:{{col}} but got {{token}}"),
+                ),
+            ],
+        )
+    };
+
     let expression_body = or_match(
         Rules::Expression,
         vec![
@@ -335,6 +379,7 @@ pub fn expression_parser() -> Combinators<Rules> {
             with_expression(),
             if_expression(),
             cast_expression(),
+            infix_expression(),
             function_call(),
             type_constructor(),
             float(),
@@ -478,8 +523,8 @@ fn type_def() -> Combinators<Rules> {
 pub fn program_parser() -> Combinators<Rules> {
     many(
         Some(Rules::Program),
-        aborting(or_match_flat(vec![function_def(), type_def(), dispatch()]),
-        format!("Expected only function or type definitions but got syntax error at {{line}}:{{col}}")),
+        aborting(or_match_flat(vec![function_def(), type_def(), dispatch(), infix_declaration()]),
+        format!("Expected only function, type definitions but got syntax error at {{line}}:{{col}}: {{token}}")),
         None,
     )
 }

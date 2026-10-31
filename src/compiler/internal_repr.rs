@@ -5,8 +5,8 @@ use nohash_hasher::IntMap;
 
 use crate::{
     compiler::{
-        identifier_map::{FALSE_ID, TRUE_ID, WILDCARD_ID},
-        optimiser::optimise_function,
+        identifier_map::{FALSE_ID, TRUE_ID},
+        optimiser::{optimise_expression, optimise_function},
     },
     parser::ast::AST,
     utils::InsertionOrderHashMap,
@@ -270,10 +270,17 @@ pub(super) struct DispatchDefinition {
     pub(super) bodies: Vec<(Pattern, Rc<Expression>)>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub(super) struct InfixDefinition {
+    pub(super) op: IdentifierId,
+    pub(super) function_name: IdentifierId,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct Program {
     pub(super) functions: InsertionOrderHashMap<IdentifierId, Rc<FunctionDefinition>>,
     pub(super) dispatches: InsertionOrderHashMap<IdentifierId, Rc<DispatchDefinition>>,
+    pub(super) infixes: InsertionOrderHashMap<IdentifierId, Rc<InfixDefinition>>,
     pub(super) types: IntMap<IdentifierId, TypeDefinition>,
     pub(super) identifier_id_map: IdentifierIdMap,
 }
@@ -283,9 +290,14 @@ impl Program {
         Self {
             functions: InsertionOrderHashMap::new(),
             dispatches: InsertionOrderHashMap::new(),
+            infixes: InsertionOrderHashMap::new(),
             types: IntMap::default(),
             identifier_id_map: IdentifierIdMap::new(),
         }
+    }
+
+    pub fn print_ids(&self) {
+        println!("{:?}", &self.identifier_id_map);
     }
 
     pub(super) fn var_name(&self, id: &IdentifierId) -> &Rc<String> {
@@ -600,10 +612,22 @@ fn signature_repr(
     ))
 }
 
+pub fn optimised_expression_repr(
+    program: &mut Program,
+    ast: &AST<Rules>
+) -> Result<Rc<Expression>, String> { 
+    let expr = expression_repr(ast, &mut program.identifier_id_map);
+    if expr.is_ok() {
+        return Ok(optimise_expression(&program, &HashSet::new(), &IntMap::default(), &expr.unwrap()));
+    }
+
+    return Err(expr.unwrap_err());
+}
+
 pub fn expression_repr(
     ast: &AST<Rules>,
     identifier_map: &mut IdentifierIdMap,
-) -> Result<Rc<Expression>, String> {
+) -> Result<Rc<Expression>, String> { 
     if ast.id.is_none() || ast.id.unwrap() != Rules::Expression {
         return Err(format!("Expected Expression but got {:?}", ast.id));
     }
@@ -635,6 +659,15 @@ pub fn expression_repr(
             Ok(Rc::new(Expression::FunctionCall(FunctionCall {
                 id: identifier_map.get_id(&Rc::new(ast.matched[0].unwrap_str())),
                 arguments: parameters,
+            })))
+        }
+        Some(Rules::InfixExpression) => {
+            let op = body.children[2].matched[0].unwrap_str();
+            let lhs = expression_repr(&body.children[1], identifier_map)?;
+            let rhs = expression_repr(&body.children[3], identifier_map)?;
+            Ok(Rc::new(Expression::FunctionCall(FunctionCall {
+                id: identifier_map.get_id(&Rc::new(op)),
+                arguments: vec![lhs, rhs],
             })))
         }
         Some(Rules::TypeConstructor) => {
@@ -928,6 +961,24 @@ fn dispatch_repr(
     Ok(definition)
 }
 
+fn infix_repr(
+    ast: &AST<Rules>,
+    identifier_map: &mut IdentifierIdMap,
+) -> Result<InfixDefinition, String> {
+    if ast.id.is_none() || ast.id.unwrap() != Rules::InfixDeclaration {
+        return Err(format!("Expected a Infix AST but got {:?}", ast.id));
+    }
+
+    let op = ast.children[1].matched[0].unwrap_str();
+    let function_name = ast.children[3].matched[0].unwrap_str();
+
+    let definition = InfixDefinition {
+        op: identifier_map.get_id(&Rc::new(op)),
+        function_name: identifier_map.get_id(&Rc::new(function_name)),
+    };
+    Ok(definition)
+}
+
 pub fn to_repr(
     ast: &AST<Rules>,
     identifier_id_map: &mut IdentifierIdMap,
@@ -938,6 +989,7 @@ pub fn to_repr(
 
     let mut functions = InsertionOrderHashMap::new();
     let mut dispatches = InsertionOrderHashMap::new();
+    let mut infixes = InsertionOrderHashMap::new();
     let mut types = IntMap::default();
     for node in &ast.children {
         match node.id {
@@ -953,6 +1005,10 @@ pub fn to_repr(
                 let definition = dispatch_repr(node, identifier_id_map)?;
                 dispatches.insert(definition.id, Rc::new(definition));
             }
+            Some(Rules::InfixDeclaration) => {
+                let definition = infix_repr(node, identifier_id_map)?;
+                infixes.insert(definition.op, Rc::new(definition));
+            }
             _ => {
                 return Err(format!(
                     "Expected function, type or dispatch at top level but got {:?}",
@@ -965,6 +1021,7 @@ pub fn to_repr(
     let mut program = Program {
         functions,
         dispatches,
+        infixes,
         types,
         identifier_id_map: identifier_id_map.clone(),
     };

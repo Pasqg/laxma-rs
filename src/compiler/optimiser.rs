@@ -395,6 +395,7 @@ mod tests {
                 }),
             )]),
             dispatches: InsertionOrderHashMap::new(),
+            infixes: InsertionOrderHashMap::new(),
             types: IntMap::default(),
             identifier_id_map: IdentifierIdMap::new(),
         };
@@ -447,6 +448,7 @@ mod tests {
                 }),
             )]),
             dispatches: InsertionOrderHashMap::new(),
+            infixes: InsertionOrderHashMap::new(),
             types: IntMap::default(),
             identifier_id_map: IdentifierIdMap::new(),
         };
@@ -498,6 +500,7 @@ mod tests {
                 }),
             )]),
             dispatches: InsertionOrderHashMap::new(),
+            infixes: InsertionOrderHashMap::new(),
             types: IntMap::default(),
             identifier_id_map: IdentifierIdMap::new(),
         };
